@@ -14,6 +14,9 @@ __pycache__/
 *.pyc
 .venv/
 
+# Private learning area (not for submission)
+notes/
+
 # Editor / OS clutter
 .vscode/
 *.swp
