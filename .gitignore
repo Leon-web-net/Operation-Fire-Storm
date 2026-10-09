@@ -14,8 +14,9 @@ __pycache__/
 *.pyc
 .venv/
 
-# Private learning area (not for submission)
-notes/
+# Learning area
+notes/  
+#firestorm-concepts.md
 
 # Editor / OS clutter
 .vscode/
