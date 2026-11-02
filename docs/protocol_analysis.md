@@ -32,27 +32,25 @@ Note: Wireshark frame numbers start at 1, so frame N is `packets.all[N-1]` in `b
 | 0 | 4 | `CTFS` marker |
 | 4 | 2 | Sequence number (big-endian) |
 | 6 | 2 | Payload length (big-endian) |
-| 8 | 8 | Unknown: `01`, 4 varying bytes, `00 00 00` |
+| 8 | 1 | File ID (`0x01` in all 20 packets) |
+| 9 | 4 | Checksum (custom algorithm, not CRC32) |
+| 13 | 3 | Padding, always `00 00 00` |
 | 16 | len | Payload |
- 
+
 In frame 13 (seq 0) `%PDF` starts at offset 16, and 16 + 512 = 528 = frame size.
 
-
-## CTFS packets
- 
-| Frame | Seq | Len |
-|---|---|---|
-| 13, 14, 24, 30, 60, 74 | 0–5 | 512 |
-| 85, 86 | **7, 6** | 512 |
-| 90, 112 | **9, 8** | 512 |
-| 117, 138, 147, 154, 169, 194, 210, 214 | 10–17 | 512 |
-| 252 | 18 | 478 |
-| 257 | 19 | **0** |
- 
+Bytes 8–15 were unknown from the capture alone. Their meaning was confirmed by the
+protocol specification inside the reassembled PDF.
 
 ## Key points
- 
+
 - Packets arrive out of order, so reassemble by seq.
-- Seq 19 has no payload (likely an end marker).
+- Seq 19 has no payload (likely an end marker; the spec doesn't say).
 - PDF = 18 × 512 + 478 = 9,694 bytes.
 - TCP can split a header across `recv()` calls.
+
+## Open questions
+
+- Should a zero-length packet be treated as end-of-file? Currently it's stored as an empty chunk.
+- Checksum verification and File ID handling are not implemented yet (see the optional
+  stages in the decoded PDF).
