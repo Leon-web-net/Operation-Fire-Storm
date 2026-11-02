@@ -13,7 +13,7 @@ enum class State{
     INMessage 
 };
 
-using ForwardFn = std::functional<bool(const char* data,size_t len)>;
+using ForwardFn = std::function<bool(const char* data,size_t len)>;
 
 struct Parser {
     State state = State::Searching;
@@ -25,7 +25,7 @@ struct Parser {
 uint16_t read_u16(const char* p);
 
 // Process newly received bytes. Does not assume recv() lines up with messages.
-bool feed(Parser& p, const char* data, size_t n, const ForwawrdFn& forward);
+bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward);
 
 // Call once when the input stream ends: forwards any held-back bytes.
 bool finish(Parser& p, const ForwardFn& forward);

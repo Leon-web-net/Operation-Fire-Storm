@@ -30,7 +30,7 @@ bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward){
                 if(!forward(p.pending.data() + pos, marker_pos - pos)) return false;
 
                 pos = marker_pos;
-                p.state = State::IMessage;
+                p.state = State::INMessage;
                 continue; 
             }
 
