@@ -5,7 +5,7 @@
 #include <string>
 
 namespace {
-    // Write every chunk, in sequence-number order (std::map is sorted by key).
+    // Write every chunk, in seq number order (std::map is sorted by key).
     bool write_chunks_to(const std::map<uint16_t, std::vector<char>>& chunks, const std::string& path){
         std::ofstream out(path, std::ios::binary);
         if(!out){
@@ -29,8 +29,7 @@ namespace {
 
 bool write_pdf(const std::map<uint16_t, std::vector<char>>& chunks, const char* path){
     // Write to a temporary file first, then rename() it over the real one.
-    // rename() is atomic, so path is always either the old file or the complete new one,
-    // never a half-written mix, even if we crash part way through.
+
     const std::string tmp = std::string(path) + ".tmp";
 
     if(!write_chunks_to(chunks, tmp)){
