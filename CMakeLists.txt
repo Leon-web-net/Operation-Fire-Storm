@@ -25,7 +25,7 @@ add_executable(firestorm
 )
 target_link_libraries(firestorm PRIVATE firestorm_core)
 
-# Unit tests: ctest --test-dir build --output-on-failure
+# Unit tests: ctest --test-dir build/release --output-on-failure
 enable_testing()
 
 add_executable(test_parser unit_tests/test_parser.cpp)
