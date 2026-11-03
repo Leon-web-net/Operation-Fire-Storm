@@ -9,12 +9,24 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+add_compile_options(-Wall -Wextra -Wpedantic)
 
-add_executable(firestorm
-  src/main.cpp
-  src/net.cpp
+# Shared logic (no main, no sockets): used by the app and the tests
+add_library(firestorm_core STATIC
   src/parser.cpp
   src/pdf.cpp
 )
+target_include_directories(firestorm_core PUBLIC src)
 
-target_compile_options(firestorm PRIVATE -Wall -Wextra -Wpedantic)
+# The relay program
+add_executable(firestorm
+  src/main.cpp
+  src/net.cpp
+)
+target_link_libraries(firestorm PRIVATE firestorm_core)
+
+# Unit tests: ctest --test-dir build --output-on-failure
+enable_testing()
+add_executable(test_parser unit_tests/test_parser.cpp)
+target_link_libraries(test_parser PRIVATE firestorm_core)
+add_test(NAME parser COMMAND test_parser)
