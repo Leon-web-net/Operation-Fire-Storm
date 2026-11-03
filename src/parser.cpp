@@ -80,10 +80,18 @@ bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward){
 }
 
 bool finish(Parser& p, const ForwardFn& forward){
-    if(p.state == State::Searching && !p.pending.empty()){
+    // Stream ended mid-packet: a "packet" that never completed was most likely
+    // normal traffic that happened to contain "CTFS", so forward it rather than drop it.
+    if(p.state == State::INMessage && !p.pending.empty()){
+        std::fprintf(stderr, "warning: stream ended inside a CTFS packet, forwarding %zu bytes as normal traffic\n",
+            p.pending.size());
+    }
+
+    // Whatever is left (a partial marker or a truncated packet) goes downstream.
+    if(!p.pending.empty()){
         if(!forward(p.pending.data(), p.pending.size())) return false;
     }
     p.pending.clear();
+    p.state = State::Searching;
     return true;
 }
-

@@ -49,7 +49,12 @@ int main(){
     }
 
     if(ok && !finish(parser,forward)) ok = false;
-    if(!write_pdf(parser.chunks, PDF_PATH)) ok = false;
+    // Only write after a clean run: a failed run must not replace a good output.pdf with a partial one.
+    if(ok){
+        if(!write_pdf(parser.chunks, PDF_PATH)) ok = false;
+    } else {
+        std::fprintf(stderr, "Run failed: %s not written\n", PDF_PATH);
+    }
 
     close(in_fd);
     if(out_fd != - 1) close(out_fd);
