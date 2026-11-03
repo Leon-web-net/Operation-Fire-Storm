@@ -79,18 +79,18 @@ bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward){
     return true;
 }
 
-// forwards incomplete data, error if partial CTFS packet is left in the buffer
+
 bool finish(Parser& p, const ForwardFn& forward){
-    
+    // Stream ended mid packet, forward the partial packet as normal data
     if(p.state == State::INMessage && !p.pending.empty()){
-        std::fprintf(stderr, "warning: stream ended inside a CTFS packet, forwarding %zu bytes as normal traffic\n",
+          std::fprintf(stderr, "warning: stream ended inside a CTFS packet, forwarding %zu bytes as normal traffic\n",
             p.pending.size());
     }
 
-    if(!p.pending.empty()){
-        if(!forward(p.pending.data(), p.pending.size())) return false;
-    }
+    // Forward any remaining bytes
+    bool ok = p.pending.empty() || forward(p.pending.data(), p.pending.size());
+    
     p.pending.clear();
     p.state = State::Searching;
-    return true;
+    return ok;
 }
