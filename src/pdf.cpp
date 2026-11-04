@@ -5,7 +5,7 @@
 #include <string>
 
 namespace {
-    // Write every chunk, in seq number order (std::map is sorted by key).
+
     bool write_chunks_to(const std::map<uint16_t, std::vector<char>>& chunks, const std::string& path){
         std::ofstream out(path, std::ios::binary);
         if(!out){
@@ -33,7 +33,7 @@ bool write_pdf(const std::map<uint16_t, std::vector<char>>& chunks, const char* 
     const std::string tmp = std::string(path) + ".tmp";
 
     if(!write_chunks_to(chunks, tmp)){
-        std::remove(tmp.c_str()); // don't leave a partial .tmp behind
+        std::remove(tmp.c_str()); 
         return false;
     }
 

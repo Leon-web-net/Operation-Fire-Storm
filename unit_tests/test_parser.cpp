@@ -1,6 +1,7 @@
 #include "parser.hpp"
 #include <cstdio>
 #include <string>
+#include <vector>
 
 int failures = 0;
 #define CHECK(cond) do { \
@@ -34,40 +35,53 @@ ForwardFn collect = [](const char* data, size_t len) {
     return true;
 };
 
-std::string payload(Parser& p, int seq) {
-    return std::string(p.chunks[seq].begin(), p.chunks[seq].end());
+// collect every complete packet the parser emits, in order (duplicates included)
+struct Emitted {
+    uint16_t seq;
+    std::string payload;
+};
+std::vector<Emitted> packets;
+PacketFn collect_packet = [](const CtfsHeader& header, const char* payload) {
+    packets.push_back({header.seq, std::string(payload, header.len)});  // copy: payload is only valid during the call
+};
+
+// start each test with nothing forwarded and nothing emitted
+void reset() {
+    forwarded.clear();
+    packets.clear();
 }
 
 
 // TESTS
 
 // 1. Normal traffic passes straight through.
-// Expected: text with no CTFS marker is forwarded unchanged and nothing is stored.
+// Expected: text with no CTFS marker is forwarded unchanged and no packet is emitted.
 void test_plain_traffic() {
-    forwarded.clear();
+    reset();
     Parser p;
     std::string input = "hello world";
  
-    feed(p, input.data(), input.size(), collect);
+    feed(p, input.data(), input.size(), collect, collect_packet);
     finish(p, collect);
  
     CHECK(forwarded == "hello world");
-    CHECK(p.chunks.empty());
+    CHECK(packets.empty());
 }
  
-// 2. A CTFS packet is stored, and NOT forwarded.
-// Expected: the packet's payload is stored under its seq; only the text around it is forwarded.
+// 2. A CTFS packet is emitted, and NOT forwarded.
+// Expected: the packet is handed to on_packet with its seq and payload; only the text around it is forwarded.
 void test_one_packet() {
-    forwarded.clear();
+    reset();
     Parser p;
     std::string input = "before" + packet(0, "SECRET") + "after";
  
-    feed(p, input.data(), input.size(), collect);
+    feed(p, input.data(), input.size(), collect, collect_packet);
     finish(p, collect);
  
     CHECK(forwarded == "beforeafter");
-    CHECK(p.chunks.size() == 1);
-    CHECK(std::string(p.chunks[0].begin(), p.chunks[0].end()) == "SECRET");
+    CHECK(packets.size() == 1);
+    CHECK(packets[0].seq == 0);
+    CHECK(packets[0].payload == "SECRET");
 }
  
 // 3. TCP can split data anywhere. Cut the input into two recv()s at every position.
@@ -76,15 +90,15 @@ void test_split_everywhere() {
     std::string input = "before" + packet(0, "SECRET") + "after";
  
     for (size_t cut = 1; cut < input.size(); ++cut) {
-        forwarded.clear();
+        reset();
         Parser p;
  
-        feed(p, input.data(), cut, collect);                        
-        feed(p, input.data() + cut, input.size() - cut, collect);   
+        feed(p, input.data(), cut, collect, collect_packet);                        
+        feed(p, input.data() + cut, input.size() - cut, collect, collect_packet);   
         finish(p, collect);
  
         CHECK(forwarded == "beforeafter");
-        CHECK(p.chunks.size() == 1);
+        CHECK(packets.size() == 1);
     }
 }
 
@@ -93,113 +107,132 @@ void test_split_everywhere() {
 void test_one_byte_at_a_time() {
     std::string input = "before" + packet(0, "SECRET") + "after";
  
-    forwarded.clear();
+    reset();
     Parser p;
  
     for (size_t i = 0; i < input.size(); ++i) {
-        feed(p, input.data() + i, 1, collect);
+        feed(p, input.data() + i, 1, collect, collect_packet);
     }
     finish(p, collect);
  
     CHECK(forwarded == "beforeafter");
-    CHECK(p.chunks.size() == 1);
+    CHECK(packets.size() == 1);
 }
 
 // 5. A partial CTFS marker that turns out not to be a marker is forwarded as normal traffic
 // Expected: a trailing "CT" is held back in case it's the start of CTFS, then forwarded once it isn't.
 void test_partial_marker(){
-    forwarded.clear();
+    reset();
     Parser p;
     
     std::string first = "beforeCT";
-    feed(p,first.data(), first.size(), collect);
+    feed(p,first.data(), first.size(), collect, collect_packet);
     CHECK(forwarded == "before");
 
     std::string second = "X";
-    feed(p,second.data(), second.size(), collect);
+    feed(p,second.data(), second.size(), collect, collect_packet);
     CHECK(forwarded == "beforeCTX");
-    CHECK(p.chunks.empty());
+    CHECK(packets.empty());
 
 }
 
 // 6. An incomplete CTFS header is retained until the remaining bytes arrive
-//  Expected: with only part of a header received, nothing is stored or forwarded until the rest arrives.
+//  Expected: with only part of a header received, nothing is emitted or forwarded until the rest arrives.
 void test_partial_header() {
-    forwarded.clear();
+    reset();
     Parser p;
     std::string pkt = packet(0, "SECRET");
 
     std::string first  = "before" + pkt.substr(0, 10);   
     std::string second = pkt.substr(10) + "after";      
 
-    feed(p, first.data(), first.size(), collect);
+    feed(p, first.data(), first.size(), collect, collect_packet);
     CHECK(forwarded == "before");          
-    CHECK(p.chunks.empty());              
+    CHECK(packets.empty());              
 
-    feed(p, second.data(), second.size(), collect);
+    feed(p, second.data(), second.size(), collect, collect_packet);
     finish(p, collect);
     CHECK(forwarded == "beforeafter");
-    CHECK(p.chunks.size() == 1);           
+    CHECK(packets.size() == 1);           
 }
 // 7. Several CTFS packets can be received in one read, and the normal traffic between them is forwarded
-// Expected: every packet in a single read is stored, and the normal byte between them is forwarded.
+// Expected: every packet in a single read is emitted, and the normal byte between them is forwarded.
 void test_several_packets_one_read() {
-    forwarded.clear();
+    reset();
     Parser p;
     std::string input = packet(0, "AAA") + "x" + packet(1, "BBB") + packet(2, "CCC");
 
-    feed(p, input.data(), input.size(), collect);
+    feed(p, input.data(), input.size(), collect, collect_packet);
     finish(p, collect);
 
     CHECK(forwarded == "x");               // only the normal byte gets through
-    CHECK(p.chunks.size() == 3);
-    CHECK(payload(p, 0) == "AAA");
-    CHECK(payload(p, 1) == "BBB");
-    CHECK(payload(p, 2) == "CCC");
+    CHECK(packets.size() == 3);
+    CHECK(packets[0].payload == "AAA");
+    CHECK(packets[1].payload == "BBB");
+    CHECK(packets[2].payload == "CCC");
 }
 
 
 // 8. A truncated CTFS packet at the end of the stream is forwarded, not lost
 // Expected: a packet cut off by the end of the stream is forwarded as normal data, not dropped.
 void test_truncated_packet_at_eof() {
-    forwarded.clear();
+    reset();
     Parser p;
     std::string pkt = packet(0, "SECRET");
     std::string input = "before" + pkt.substr(0, pkt.size() - 3);
 
-    feed(p, input.data(), input.size(), collect);
+    feed(p, input.data(), input.size(), collect, collect_packet);
     finish(p, collect);
 
     CHECK(forwarded == input);             // the partial packet is forwarded, not lost
-    CHECK(p.chunks.empty());
+    CHECK(packets.empty());
 }
 
-// 9. A repeated seq must not silently replace data already received.
-// Expected: when a seq arrives twice, the first payload is kept and the duplicate is ignored.
+// 9. A repeated seq is still emitted: deciding what to do with duplicates is the reassembler's job.
+// Expected: both packets are handed out, in the order they arrived.
 void test_duplicate_seq() {
-    forwarded.clear();
+    reset();
     Parser p;
     std::string input = packet(5, "old") + packet(5, "new");
 
-    feed(p, input.data(), input.size(), collect);
+    feed(p, input.data(), input.size(), collect, collect_packet);
     finish(p, collect);
 
-    CHECK(p.chunks.size() == 1);
-    CHECK(payload(p, 5) == "old");         // first one kept, duplicate ignored
+    CHECK(packets.size() == 2);
+    CHECK(packets[0].payload == "old");
+    CHECK(packets[1].payload == "new");
 }
 
 // 10. The stream ends partway through a CTFS header: those bytes are forwarded too
 // Expected: a header cut off by the end of the stream is forwarded as normal data, not dropped.
 void test_truncated_header_at_eof() {
-    forwarded.clear();
+    reset();
     Parser p;
     std::string input = "before" + packet(0, "SECRET").substr(0, 10);  // marker + 6 header bytes
 
-    feed(p, input.data(), input.size(), collect);
+    feed(p, input.data(), input.size(), collect, collect_packet);
     finish(p, collect);
 
     CHECK(forwarded == input);
-    CHECK(p.chunks.empty());
+    CHECK(packets.empty());
+}
+
+// 11. parse_header reads every field from the right offset
+// Expected: distinct values in each field come back exactly; non-zero padding is flagged.
+void test_parse_header() {
+    // CTFS | seq 0x0102 | len 0x0003 | file 0x07 | checksum 0xAABBCCDD | padding 00 00 00
+    std::string hdr = std::string("CTFS\x01\x02\x00\x03\x07\xAA\xBB\xCC\xDD", 13) + std::string(3, '\0');
+    CHECK(hdr.size() == HEADER_LEN);
+
+    CtfsHeader h = parse_header(hdr.data());
+    CHECK(h.seq == 0x0102);
+    CHECK(h.len == 3);
+    CHECK(h.file_id == 7);
+    CHECK(h.checksum == 0xAABBCCDD);
+    CHECK(h.padding_ok);
+
+    hdr[15] = '\x01';                      // break the padding
+    CHECK(!parse_header(hdr.data()).padding_ok);
 }
 
 int main() {
@@ -216,6 +249,7 @@ int main() {
     RUN(test_truncated_packet_at_eof);
     RUN(test_duplicate_seq);
     RUN(test_truncated_header_at_eof);
+    RUN(test_parse_header);
 
     std::fprintf(stderr, failures == 0 ? "\nAll tests passed\n" : "\n%d check(s) failed\n", failures);
     return failures == 0 ? 0 : 1;   // ctest reads this: 0 = pass
