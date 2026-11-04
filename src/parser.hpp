@@ -1,31 +1,33 @@
 #pragma once
 
+#include "ctfs.hpp"
+
 #include <cstddef>
-#include <cstdint>
 #include <functional>
-#include <map>
 #include <vector>
 
-constexpr size_t HEADER_LEN = 16;
+// Framing: finds CTFS packets in the TCP byte stream.
+// It doesn't store packets. It hands each one to on_packet and forwards everything else.
 
 enum class State{
     Searching, // scanning for CTFS
-    INMessage 
+    InMessage  // found CTFS, waiting for the rest of the packet
 };
 
-using ForwardFn = std::function<bool(const char* data,size_t len)>;
+// Called with normal (non-CTFS) traffic to send downstream. Return false on error.
+using ForwardFn = std::function<bool(const char* data, size_t len)>;
+
+// Called once per complete CTFS packet. payload points at header.len bytes.
+// payload is only valid during the call (it points into the parser's buffer): copy what you keep.
+using PacketFn = std::function<void(const CtfsHeader& header, const char* payload)>;
 
 struct Parser {
     State state = State::Searching;
     std::vector<char> pending; // bytes not yet processed
-    std::map<uint16_t, std::vector<char>> chunks; // seq -> payload
 };
 
-// Read a big-endian (network order) 16-bit number from two bytes.
-uint16_t read_u16(const char* p);
-
 // Process newly received bytes. Does not assume recv() lines up with messages.
-bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward);
+bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward, const PacketFn& on_packet);
 
 // Call once when the input stream ends: forwards any held-back bytes.
 bool finish(Parser& p, const ForwardFn& forward);

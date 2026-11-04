@@ -9,19 +9,17 @@ namespace{
     constexpr size_t MARKER_LEN = sizeof(MARKER);
 }
 
-uint16_t read_u16(const char* p){
-    return static_cast<uint16_t>(
-        (static_cast<uint8_t>(p[0])<<8) | static_cast<uint8_t>(p[1])
-    );
-}
-
-bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward){
+bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward, const PacketFn& on_packet){
     p.pending.insert(p.pending.end(), data, data +n);
 
     size_t pos = 0;
+    bool waiting = false; // true when we need more data before we can go further
 
-    while(pos<p.pending.size()){
-        if(p.state == State::Searching){
+    while(!waiting && pos < p.pending.size()){
+        switch(p.state){
+
+        case State::Searching: {
+            // Look for the next "CTFS" marker
             auto it = std::search(p.pending.begin()+ static_cast<std::ptrdiff_t>(pos),
              p.pending.end(), MARKER, MARKER + MARKER_LEN);
 
@@ -30,10 +28,11 @@ bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward){
                 if(!forward(p.pending.data() + pos, marker_pos - pos)) return false;
 
                 pos = marker_pos;
-                p.state = State::INMessage;
-                continue; 
+                p.state = State::InMessage;
+                break;
             }
 
+            // No marker: hold back up to 3 trailing bytes in case they start a marker split across reads
             size_t remaining = p.pending.size() - pos;
             size_t keep = 0;
             size_t max_keep = std::min<size_t>(MARKER_LEN -1, remaining);
@@ -41,36 +40,36 @@ bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward){
             for(size_t k = max_keep; k>0; --k){
                 if(std::memcmp(p.pending.data() +p.pending.size()-k, MARKER,k ) == 0){
                     keep = k;
-                    break; 
+                    break;
                 }
             }
-            
-            // 
+
             size_t safe_len = remaining - keep;
             if(!forward(p.pending.data() +pos, safe_len)) return false;
             pos += safe_len;
-            break; // need more data to find marker
+            waiting = true; // need more data to find a marker
+            break;
         }
 
-        // p.state == State::IMessage change to one function per state
-        size_t left = p.pending.size() - pos;
-        // fewer than 16: can't read seq/len yet, wait
-        if(left<HEADER_LEN) break;
+        case State::InMessage: {
+            // pos points at the 'C' of "CTFS". Wait for the full header, then the full payload.
+            size_t left = p.pending.size() - pos;
+            if(left < HEADER_LEN){ waiting = true; break; }
 
-        // CTFS (4 bytes) + seq (2 bytes) + len (2 bytes) 
-        const char* msg = p.pending.data() +pos;
-        uint16_t seq = read_u16(msg +4);
-        uint16_t len = read_u16(msg +6);
-        size_t total = HEADER_LEN + static_cast<size_t>(len); // HEADER_LEN + payload length
+            const char* msg = p.pending.data() +pos;
+            CtfsHeader header = parse_header(msg);
+            size_t total = HEADER_LEN + static_cast<size_t>(header.len);
 
-        if(left < total) break; // wait for payload to arrive
+            if(left < total){ waiting = true; break; }
 
-        p.chunks[seq] = std::vector<char>(msg + HEADER_LEN, msg + total);
-        std::printf("CTFS seq=%u len=%u\n", static_cast<unsigned>(seq),
-         static_cast<unsigned>(len));
-        
-         pos += total;
-         p.state = State::Searching;
+            on_packet(header, msg + HEADER_LEN); 
+
+            pos += total;
+            p.state = State::Searching;
+            break;
+        }
+
+        }
     }
 
     p.pending.erase(p.pending.begin(), 
@@ -82,7 +81,7 @@ bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward){
 
 bool finish(Parser& p, const ForwardFn& forward){
     // Stream ended mid packet, forward the partial packet as normal data
-    if(p.state == State::INMessage && !p.pending.empty()){
+    if(p.state == State::InMessage && !p.pending.empty()){
           std::fprintf(stderr, "warning: stream ended inside a CTFS packet, forwarding %zu bytes as normal traffic\n",
             p.pending.size());
     }
