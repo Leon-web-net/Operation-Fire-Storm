@@ -18,7 +18,7 @@ enum class State{
 using ForwardFn = std::function<bool(const char* data, size_t len)>;
 
 // Called once per complete CTFS packet. payload points at header.len bytes.
-// payload is only valid during the call (it points into the parser's buffer): copy what you keep.
+// payload is only valid during the call (it points into the recv buffer or the parser's pending bytes): copy what you keep.
 using PacketFn = std::function<void(const CtfsHeader& header, const char* payload)>;
 
 struct Parser {
