@@ -103,24 +103,7 @@ void test_two_file_ids_kept_separate() {
     CHECK(!fs::exists(dir / "2.spool"));
 }
 
-// 3. Packets that arrive out of order come out of the index in seq order.
-void test_out_of_order_stored_in_order() {
-    Reassembler r;
-    r.dir = fresh_dir("order").string();
-
-    add(r, 1, 2, "C");
-    add(r, 1, 0, "A");
-    add(r, 1, 1, "B");
-
-    std::string joined;
-    for (const auto& [seq, slice] : r.files[1].index) {
-        (void)slice;
-        joined += stored(r, 1, seq);
-    }
-    CHECK(joined == "ABC");
-}
-
-// 4. The spool can't be created (folder doesn't exist).
+// 3. The spool can't be created (folder doesn't exist).
 // Expected: WriteError, not a crash.
 void test_write_error_when_dir_missing() {
     Reassembler r;
@@ -129,7 +112,7 @@ void test_write_error_when_dir_missing() {
     CHECK(add(r, 1, 0, "data") == AddResult::WriteError);
 }
 
-// 5. write_files puts out-of-order packets back in seq order.
+// 4. write_files puts out-of-order packets back in seq order.
 // Expected: 1.pdf holds the payloads in seq order.
 void test_write_files_in_seq_order() {
     fs::path dir = fresh_dir("write_order");
@@ -144,7 +127,7 @@ void test_write_files_in_seq_order() {
     CHECK(read_file(dir / "1.pdf") == "AAABBBCCC");
 }
 
-// 6. Two file IDs give two output files.
+// 5. Two file IDs give two output files.
 void test_write_files_two_ids() {
     fs::path dir = fresh_dir("write_two");
     Reassembler r;
@@ -158,7 +141,7 @@ void test_write_files_two_ids() {
     CHECK(read_file(dir / "2.pdf") == "two");
 }
 
-// 7. After a successful write, only the PDF is left: no .spool, no .tmp.
+// 6. After a successful write, only the PDF is left: no .spool, no .tmp.
 void test_no_leftovers_after_write() {
     fs::path dir = fresh_dir("leftovers");
     Reassembler r;
@@ -172,7 +155,7 @@ void test_no_leftovers_after_write() {
     CHECK(!fs::exists(dir / "1.pdf.tmp"));
 }
 
-// 8. A new write fully replaces an old, longer file (no leftover bytes at the end).
+// 7. A new write fully replaces an old, longer file (no leftover bytes at the end).
 void test_replaces_existing_file() {
     fs::path dir = fresh_dir("replace");
     write_file(dir / "1.pdf", "OLD CONTENTS THAT ARE LONGER");
@@ -184,7 +167,7 @@ void test_replaces_existing_file() {
     CHECK(read_file(dir / "1.pdf") == "new");
 }
 
-// 9. If the final write fails, an existing good 1.pdf is left untouched.
+// 8. If the final write fails, an existing good 1.pdf is left untouched.
 void test_failed_write_keeps_old_file() {
     fs::path dir = fresh_dir("keep_old");
     write_file(dir / "1.pdf", "GOOD PDF");
@@ -198,7 +181,7 @@ void test_failed_write_keeps_old_file() {
     CHECK(read_file(dir / "1.pdf") == "GOOD PDF");
 }
 
-// 10. A zero-length payload (like the stream's last packet) is stored and written without problems.
+// 9. A zero-length payload (like the stream's last packet) is stored and written without problems.
 void test_zero_length_payload() {
     fs::path dir = fresh_dir("zero_len");
     Reassembler r;
@@ -218,7 +201,6 @@ int main() {
 
     RUN(test_duplicate_keeps_first);
     RUN(test_two_file_ids_kept_separate);
-    RUN(test_out_of_order_stored_in_order);
     RUN(test_write_error_when_dir_missing);
     RUN(test_write_files_in_seq_order);
     RUN(test_write_files_two_ids);

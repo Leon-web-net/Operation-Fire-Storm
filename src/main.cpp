@@ -3,7 +3,7 @@
 #include "parser.hpp"
 #include "reassembler.hpp"
 
-#include <sys/socket.h> //accept, recv, send, socket
+#include <sys/socket.h> //accept, recv
 #include <unistd.h> //close
 
 #include <cerrno>
@@ -35,18 +35,15 @@ int main(){
     auto on_packet = [&reassembler, &spool_ok](const CtfsHeader& header, const char* payload){
         AddResult res = add_packet(reassembler, header, payload);
         if(res == AddResult::Duplicate){
-            std::fprintf(stderr, "warning: duplicate seq %u for file %u ignored\n",
-                static_cast<unsigned>(header.seq), static_cast<unsigned>(header.file_id));
+            std::fprintf(stderr, "warning: duplicate seq %d for file %d ignored\n", header.seq, header.file_id);
             return;
         }
         if(res == AddResult::WriteError){
-            std::fprintf(stderr, "error: could not write spool for file %u\n",
-                static_cast<unsigned>(header.file_id));
+            std::fprintf(stderr, "error: could not write spool for file %d\n", header.file_id);
             spool_ok = false;
             return;
         }
-        std::printf("CTFS file=%u seq=%u len=%u\n", static_cast<unsigned>(header.file_id),
-            static_cast<unsigned>(header.seq), static_cast<unsigned>(header.len));
+        std::printf("CTFS file=%d seq=%d len=%d\n", header.file_id, header.seq, header.len);
     };
 
     char buf[65536];
@@ -68,18 +65,14 @@ int main(){
         }
     }
 
-    if(ok && !finish(parser,forward)) ok = false;
-    if(!spool_ok) ok = false;
+    if(ok) ok = finish(parser, forward) && spool_ok;
     // Only write after a clean run: a failed run must not replace a good PDF with a partial one.
     // One output file per file ID: 1.pdf, 2.pdf, ... (on failure the destructor deletes the spools)
-    if(ok){
-        if(!write_files(reassembler)) ok = false;
-    } else {
-        std::fprintf(stderr, "Run failed: no PDF written\n");
-    }
+    if(ok) ok = write_files(reassembler);
+    else   std::fprintf(stderr, "Run failed: no PDF written\n");
 
     close(in_fd);
-    if(out_fd != - 1) close(out_fd);
+    if(out_fd != -1) close(out_fd);
     close(listen_fd);
 
     return ok ? 0 :1;

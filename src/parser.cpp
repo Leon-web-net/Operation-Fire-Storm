@@ -14,9 +14,8 @@ namespace{
     size_t process(Parser& p, const char* data, size_t n,
                    const ForwardFn& forward, const PacketFn& on_packet, bool& ok){
         size_t pos = 0;
-        bool waiting = false; // true when we need more data before we can go further
 
-        while(!waiting && pos < n){
+        while(pos < n){
             switch(p.state){
 
             case State::Searching: {
@@ -46,21 +45,19 @@ namespace{
 
                 size_t safe_len = remaining - keep;
                 if(!forward(data + pos, safe_len)){ ok = false; return pos; }
-                pos += safe_len;
-                waiting = true; // need more data to find a marker
-                break;
+                return pos + safe_len; // need more data to find a marker
             }
 
             case State::InMessage: {
                 // pos points at the 'C' of "CTFS". Wait for the full header, then the full payload.
                 size_t left = n - pos;
-                if(left < HEADER_LEN){ waiting = true; break; }
+                if(left < HEADER_LEN) return pos;
 
                 const char* msg = data + pos;
                 CtfsHeader header = parse_header(msg);
                 size_t total = HEADER_LEN + static_cast<size_t>(header.len);
 
-                if(left < total){ waiting = true; break; }
+                if(left < total) return pos;
 
                 on_packet(header, msg + HEADER_LEN);
 
@@ -97,7 +94,7 @@ bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward, const
 
 bool finish(Parser& p, const ForwardFn& forward){
     // Stream ended mid packet, forward the partial packet as normal data
-    if(p.state == State::InMessage && !p.pending.empty()){
+    if(p.state == State::InMessage){
           std::fprintf(stderr, "warning: stream ended inside a CTFS packet, forwarding %zu bytes as normal traffic\n",
             p.pending.size());
     }

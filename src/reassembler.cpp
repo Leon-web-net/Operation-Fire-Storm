@@ -51,7 +51,6 @@ static bool copy_spool(SpoolFile& f, const std::string& path){
     std::vector<char> buf;   // reused for every packet, never bigger than 64 KB
     bool ok = true;
     for(const auto& [seq, slice] : f.index){
-        (void)seq;
         if(!read_payload(f, slice, buf) || std::fwrite(buf.data(), 1, slice.len, out) != slice.len){
             ok = false;
             break;

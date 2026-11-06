@@ -25,7 +25,7 @@ struct SpoolFile {
 };
 
 struct Reassembler {
-    std::string dir = ".";              // where spools (and later the output files) go
+    std::string dir = ".";              // where spools and output files go
     std::map<uint8_t, SpoolFile> files; // file_id -> its spool
 
     Reassembler() = default;

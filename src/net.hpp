@@ -9,5 +9,5 @@ int make_listener(int port);
 // Returns the connected fd or -1 on error
 int connect_to(int port);
 
-
+// Sends all len bytes (send() may send fewer per call). Returns false on error.
 bool send_all(int fd, const char* data, size_t len);
