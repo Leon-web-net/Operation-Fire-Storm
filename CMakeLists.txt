@@ -16,7 +16,6 @@ add_library(firestorm_core STATIC
   src/ctfs.cpp
   src/parser.cpp
   src/reassembler.cpp
-  src/pdf.cpp
 )
 target_include_directories(firestorm_core PUBLIC src)
 
@@ -33,10 +32,6 @@ enable_testing()
 add_executable(test_parser unit_tests/test_parser.cpp)
 target_link_libraries(test_parser PRIVATE firestorm_core)
 add_test(NAME parser COMMAND test_parser)
-
-add_executable(test_pdf unit_tests/test_pdf.cpp)
-target_link_libraries(test_pdf PRIVATE firestorm_core)
-add_test(NAME pdf COMMAND test_pdf)
 
 add_executable(test_reassembler unit_tests/test_reassembler.cpp)
 target_link_libraries(test_reassembler PRIVATE firestorm_core)

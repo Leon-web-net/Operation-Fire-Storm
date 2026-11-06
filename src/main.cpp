@@ -1,7 +1,6 @@
 #include "config.hpp"
 #include "net.hpp"
 #include "parser.hpp"
-#include "pdf.hpp"
 #include "reassembler.hpp"
 
 #include <sys/socket.h> //accept, recv, send, socket
@@ -9,7 +8,6 @@
 
 #include <cerrno>
 #include <cstdio>
-#include <string>
 
 int main(){
     int listen_fd = make_listener(LISTEN_PORT);
@@ -33,10 +31,18 @@ int main(){
 
     // Each complete CTFS packet: log it, then hand it to the reassembler
     Reassembler reassembler;
-    auto on_packet = [&reassembler](const CtfsHeader& header, const char* payload){
-        if(!add_packet(reassembler, header, payload)){
-             std::fprintf(stderr, "warning: duplicate seq %u for file %u ignored\n",
-                 static_cast<unsigned>(header.seq), static_cast<unsigned>(header.file_id));
+    bool spool_ok = true;
+    auto on_packet = [&reassembler, &spool_ok](const CtfsHeader& header, const char* payload){
+        AddResult res = add_packet(reassembler, header, payload);
+        if(res == AddResult::Duplicate){
+            std::fprintf(stderr, "warning: duplicate seq %u for file %u ignored\n",
+                static_cast<unsigned>(header.seq), static_cast<unsigned>(header.file_id));
+            return;
+        }
+        if(res == AddResult::WriteError){
+            std::fprintf(stderr, "error: could not write spool for file %u\n",
+                static_cast<unsigned>(header.file_id));
+            spool_ok = false;
             return;
         }
         std::printf("CTFS file=%u seq=%u len=%u\n", static_cast<unsigned>(header.file_id),
@@ -63,17 +69,13 @@ int main(){
     }
 
     if(ok && !finish(parser,forward)) ok = false;
-    // Only write after a clean run: a failed run must not replace a good output.pdf with a partial one.
+    if(!spool_ok) ok = false;
+    // Only write after a clean run: a failed run must not replace a good PDF with a partial one.
+    // One output file per file ID: 1.pdf, 2.pdf, ... (on failure the destructor deletes the spools)
     if(ok){
-        // One output file per file ID. With a single file (the normal case) it's just output.pdf.
-        for(const auto& [file_id, chunks] : reassembler.files){
-            std::string path = reassembler.files.size() == 1
-                ? std::string(PDF_PATH)
-                : "file_" + std::to_string(file_id) + "_" + PDF_PATH;
-            if(!write_pdf(chunks, path.c_str())) ok = false;
-        }
+        if(!write_files(reassembler)) ok = false;
     } else {
-        std::fprintf(stderr, "Run failed: %s not written\n", PDF_PATH);
+        std::fprintf(stderr, "Run failed: no PDF written\n");
     }
 
     close(in_fd);

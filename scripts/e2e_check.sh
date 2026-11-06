@@ -8,7 +8,7 @@ CHALLENGE="$(realpath "${1:-$ROOT/tests/coretech}")"
 BIN="$(realpath "${2:-$ROOT/build/release/firestorm}")"
 EXPECTED_SHA="44cb6bd48c6b51959f3ce43f945be7ca67ce38a4a5880190456b74dbe3f16974"
 
-WORK="$(mktemp -d)"                  # run in a temp folder so the repo's output.pdf is untouched
+WORK="$(mktemp -d)"                  # run in a temp folder so the repo's 1.pdf is untouched
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"
 
@@ -22,5 +22,5 @@ wait "$FS_PID" || { echo "FAIL  firestorm exited with an error"; cat firestorm.l
 grep -q "^OK" test.log || { echo "FAIL  test.py"; cat test.log; exit 1; }
 echo "PASS  test.py reports OK"
 
-[ "$(sha256sum output.pdf | cut -d' ' -f1)" = "$EXPECTED_SHA" ] || { echo "FAIL  output.pdf is wrong or missing"; exit 1; }
-echo "PASS  output.pdf matches the expected SHA-256"
+[ "$(sha256sum 1.pdf | cut -d' ' -f1)" = "$EXPECTED_SHA" ] || { echo "FAIL  1.pdf is wrong or missing"; exit 1; }
+echo "PASS  1.pdf matches the expected SHA-256"
