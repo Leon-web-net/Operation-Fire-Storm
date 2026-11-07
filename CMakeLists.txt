@@ -36,3 +36,9 @@ add_test(NAME parser COMMAND test_parser)
 add_executable(test_reassembler unit_tests/test_reassembler.cpp)
 target_link_libraries(test_reassembler PRIVATE firestorm_core)
 add_test(NAME reassembler COMMAND test_reassembler)
+
+# Golden test: the real stage-1 capture must rebuild expected.pdf exactly
+add_executable(test_golden unit_tests/test_golden.cpp)
+target_link_libraries(test_golden PRIVATE firestorm_core)
+target_compile_definitions(test_golden PRIVATE DATA_DIR="${CMAKE_SOURCE_DIR}/unit_tests/data")
+add_test(NAME golden COMMAND test_golden)

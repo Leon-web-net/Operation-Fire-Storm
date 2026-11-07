@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CHALLENGE="$(realpath "${1:-$ROOT/tests/coretech}")"
+CHALLENGE="$(realpath "${1:-$ROOT/tests/coretech/stage_1}")"
 BIN="$(realpath "${2:-$ROOT/build/release/firestorm}")"
 EXPECTED_SHA="44cb6bd48c6b51959f3ce43f945be7ca67ce38a4a5880190456b74dbe3f16974"
 

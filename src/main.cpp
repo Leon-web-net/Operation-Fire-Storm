@@ -38,8 +38,7 @@ int main(){
             std::fprintf(stderr, "warning: duplicate seq %d for file %d ignored\n", header.seq, header.file_id);
             return;
         }
-        if(res == AddResult::WriteError){
-            std::fprintf(stderr, "error: could not write spool for file %d\n", header.file_id);
+        if(res == AddResult::WriteError){   // add_packet already printed the reason, once
             spool_ok = false;
             return;
         }
