@@ -97,6 +97,7 @@ void test_split_everywhere() {
 
         CHECK(forwarded == "beforeafter");
         CHECK(packets.size() == 1);
+        CHECK(!packets.empty() && packets[0].payload == "SECRET");
     }
 }
 
