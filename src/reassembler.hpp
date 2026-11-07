@@ -19,7 +19,8 @@ struct Slice {
 };
 
 struct SpoolFile {
-    std::FILE* fp = nullptr;            // <dir>/<id>.spool, opened "w+b"
+    std::FILE* fp = nullptr;            // <dir>/<id>.spool, opened "a+b" (append + read)
+    bool       failed = false;          // a write failed: refuse further packets for this file
     uint64_t   size = 0;                // bytes written so far = where the next record goes
     std::map<uint16_t, Slice> index;    // seq -> where its payload is
 };
@@ -37,6 +38,7 @@ struct Reassembler {
 enum class AddResult { Stored, Duplicate, WriteError };
 
 // Append one packet to its file's spool. A repeated seq is rejected (the first copy is kept).
+// After the first write error the spool is marked failed: later packets get WriteError straight away.
 AddResult add_packet(Reassembler& r, const CtfsHeader& header, const char* payload);
 
 // Read the payload for one index entry back from the spool into out. Returns false on error.

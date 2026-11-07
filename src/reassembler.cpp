@@ -15,18 +15,24 @@ Reassembler::~Reassembler(){
 
 AddResult add_packet(Reassembler& r, const CtfsHeader& header, const char* payload){
     SpoolFile& f = r.files[header.file_id];   // creates the entry on the file's first packet
-    if(!f.fp){
-        f.fp = std::fopen(path_for(r, header.file_id, ".spool").c_str(), "w+b");
-        if(!f.fp) return AddResult::WriteError;
-    }
+    if(f.failed) return AddResult::WriteError;  // already reported; don't retry or write after a bad record
     if(f.index.count(header.seq) != 0) return AddResult::Duplicate; // keep the first copy
+
+    const std::string path = path_for(r, header.file_id, ".spool");
+    if(!f.fp){
+        std::remove(path.c_str());               // "a+b" doesn't truncate: clear any spool left by a crash
+        f.fp = std::fopen(path.c_str(), "a+b");  // append mode: every write lands at the end
+    }
 
     const unsigned char rec[4] = {
         static_cast<unsigned char>(header.seq >> 8), static_cast<unsigned char>(header.seq),
         static_cast<unsigned char>(header.len >> 8), static_cast<unsigned char>(header.len),
     };
-    if(std::fwrite(rec, 1, 4, f.fp) != 4) return AddResult::WriteError;
-    if(std::fwrite(payload, 1, header.len, f.fp) != header.len) return AddResult::WriteError;
+    if(!f.fp || std::fwrite(rec, 1, 4, f.fp) != 4 || std::fwrite(payload, 1, header.len, f.fp) != header.len){
+        std::perror(path.c_str());
+        f.failed = true;
+        return AddResult::WriteError;
+    }
 
     f.index[header.seq] = {f.size + 4, header.len};
     f.size += 4 + header.len;
@@ -35,11 +41,10 @@ AddResult add_packet(Reassembler& r, const CtfsHeader& header, const char* paylo
 
 bool read_payload(SpoolFile& f, const Slice& s, std::vector<char>& out){
     out.resize(s.len);
-    // fflush is required when switching from writing to reading on the same FILE*
-    if(std::fflush(f.fp) != 0) return false;
-    if(std::fseek(f.fp, static_cast<long>(s.offset), SEEK_SET) != 0) return false;
+    // C stdio rule: switching between writing and reading on one FILE* needs an fseek (or fflush) in between.
+    if(std::fseek(f.fp, static_cast<long>(s.offset), SEEK_SET) != 0) return false;  // also flushes pending writes
     bool ok = std::fread(out.data(), 1, s.len, f.fp) == s.len;
-    std::fseek(f.fp, 0, SEEK_END);   // put the position back at the end for the next append
+    std::fseek(f.fp, 0, SEEK_END);   // the switch back to writing (the position doesn't matter in "a+b")
     return ok;
 }
 
@@ -63,7 +68,8 @@ static bool copy_spool(SpoolFile& f, const std::string& path){
 bool write_files(Reassembler& r){
     bool all_ok = true;
     for(auto& [file_id, f] : r.files){
-        if(!f.fp || f.index.empty()) continue;   // nothing stored (that run already failed)
+        if(f.failed){ all_ok = false; continue; }   // a broken spool is never turned into a PDF
+        if(f.index.empty()) continue;
 
         // Gap check: seqs should be 0..last with none missing. Warn only for now.
         uint16_t last = f.index.rbegin()->first;

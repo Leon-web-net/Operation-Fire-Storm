@@ -112,7 +112,36 @@ void test_write_error_when_dir_missing() {
     CHECK(add(r, 1, 0, "data") == AddResult::WriteError);
 }
 
-// 4. write_files puts out-of-order packets back in seq order.
+// 4. After a write error the spool is marked failed and never retried.
+// Expected: even once the folder exists, later packets get WriteError and no spool is created.
+void test_failed_spool_not_retried() {
+    fs::path dir = fresh_dir("no_retry") / "missing";
+    Reassembler r;
+    r.dir = dir.string();
+
+    CHECK(add(r, 1, 0, "data") == AddResult::WriteError);
+    fs::create_directories(dir);
+    CHECK(add(r, 1, 1, "more") == AddResult::WriteError);
+    CHECK(!fs::exists(dir / "1.spool"));
+}
+
+// 5. A failed spool is never turned into a PDF.
+// Expected: write_files returns false and writes no 1.pdf, but other files still get written.
+void test_write_files_skips_failed_spool() {
+    fs::path dir = fresh_dir("skip_failed");
+    Reassembler r;
+    r.dir = dir.string();
+
+    add(r, 1, 0, "bad");
+    add(r, 2, 0, "good");
+    r.files[1].failed = true;              // as if a later write to 1.spool had failed
+
+    CHECK(!write_files(r));
+    CHECK(!fs::exists(dir / "1.pdf"));
+    CHECK(read_file(dir / "2.pdf") == "good");
+}
+
+// 6. write_files puts out-of-order packets back in seq order.
 // Expected: 1.pdf holds the payloads in seq order.
 void test_write_files_in_seq_order() {
     fs::path dir = fresh_dir("write_order");
@@ -127,7 +156,7 @@ void test_write_files_in_seq_order() {
     CHECK(read_file(dir / "1.pdf") == "AAABBBCCC");
 }
 
-// 5. Two file IDs give two output files.
+// 7. Two file IDs give two output files.
 void test_write_files_two_ids() {
     fs::path dir = fresh_dir("write_two");
     Reassembler r;
@@ -141,7 +170,7 @@ void test_write_files_two_ids() {
     CHECK(read_file(dir / "2.pdf") == "two");
 }
 
-// 6. After a successful write, only the PDF is left: no .spool, no .tmp.
+// 8. After a successful write, only the PDF is left: no .spool, no .tmp.
 void test_no_leftovers_after_write() {
     fs::path dir = fresh_dir("leftovers");
     Reassembler r;
@@ -155,7 +184,7 @@ void test_no_leftovers_after_write() {
     CHECK(!fs::exists(dir / "1.pdf.tmp"));
 }
 
-// 7. A new write fully replaces an old, longer file (no leftover bytes at the end).
+// 9. A new write fully replaces an old, longer file (no leftover bytes at the end).
 void test_replaces_existing_file() {
     fs::path dir = fresh_dir("replace");
     write_file(dir / "1.pdf", "OLD CONTENTS THAT ARE LONGER");
@@ -167,7 +196,7 @@ void test_replaces_existing_file() {
     CHECK(read_file(dir / "1.pdf") == "new");
 }
 
-// 8. If the final write fails, an existing good 1.pdf is left untouched.
+// 10. If the final write fails, an existing good 1.pdf is left untouched.
 void test_failed_write_keeps_old_file() {
     fs::path dir = fresh_dir("keep_old");
     write_file(dir / "1.pdf", "GOOD PDF");
@@ -181,7 +210,7 @@ void test_failed_write_keeps_old_file() {
     CHECK(read_file(dir / "1.pdf") == "GOOD PDF");
 }
 
-// 9. A zero-length payload (like the stream's last packet) is stored and written without problems.
+// 11. A zero-length payload (like the stream's last packet) is stored and written without problems.
 void test_zero_length_payload() {
     fs::path dir = fresh_dir("zero_len");
     Reassembler r;
@@ -202,6 +231,8 @@ int main() {
     RUN(test_duplicate_keeps_first);
     RUN(test_two_file_ids_kept_separate);
     RUN(test_write_error_when_dir_missing);
+    RUN(test_failed_spool_not_retried);
+    RUN(test_write_files_skips_failed_spool);
     RUN(test_write_files_in_seq_order);
     RUN(test_write_files_two_ids);
     RUN(test_no_leftovers_after_write);
