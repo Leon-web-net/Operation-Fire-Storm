@@ -79,7 +79,7 @@ void test_duplicate_keeps_first() {
 
 // 2. Two files in the same stream get separate spools.
 // Expected: the same seq in different file IDs is not a duplicate; each spool holds its own data;
-// the spools are deleted when the reassembler goes away.
+// the spools are kept when the reassembler goes away without writing (so --recover can use them).
 void test_two_file_ids_kept_separate() {
     fs::path dir = fresh_dir("two_ids");
     {
@@ -96,11 +96,11 @@ void test_two_file_ids_kept_separate() {
         CHECK(stored(r, 1, 0) == "file1-a");
         CHECK(stored(r, 1, 1) == "file1-b");
         CHECK(stored(r, 2, 0) == "file2-a");
-        CHECK(fs::exists(dir / "1.spool"));
-        CHECK(fs::exists(dir / "2.spool"));
+        CHECK(fs::exists(dir / "spool" / "1.spool"));
+        CHECK(fs::exists(dir / "spool" / "2.spool"));
     }
-    CHECK(!fs::exists(dir / "1.spool"));
-    CHECK(!fs::exists(dir / "2.spool"));
+    CHECK(fs::exists(dir / "spool" / "1.spool"));
+    CHECK(fs::exists(dir / "spool" / "2.spool"));
 }
 
 // 3. The spool can't be created (folder doesn't exist).
@@ -122,7 +122,7 @@ void test_failed_spool_not_retried() {
     CHECK(add(r, 1, 0, "data") == AddResult::WriteError);
     fs::create_directories(dir);
     CHECK(add(r, 1, 1, "more") == AddResult::WriteError);
-    CHECK(!fs::exists(dir / "1.spool"));
+    CHECK(!fs::exists(dir / "spool" / "1.spool"));
 }
 
 // 5. A failed spool is never turned into a PDF.
@@ -180,7 +180,7 @@ void test_no_leftovers_after_write() {
     CHECK(write_files(r));
 
     CHECK(fs::exists(dir / "1.pdf"));
-    CHECK(!fs::exists(dir / "1.spool"));
+    CHECK(!fs::exists(dir / "spool" / "1.spool"));
     CHECK(!fs::exists(dir / "1.pdf.tmp"));
 }
 
@@ -224,6 +224,89 @@ void test_zero_length_payload() {
     CHECK(read_file(dir / "1.pdf") == "AB");
 }
 
+// 12. Each record is on disk (handed to the OS) as soon as add_packet returns, not sitting in a buffer.
+// Expected: the spool file's size already matches, while it is still open.
+void test_records_flushed_immediately() {
+    fs::path dir = fresh_dir("flushed");
+    Reassembler r;
+    r.dir = dir.string();
+
+    add(r, 1, 0, "hello");
+    CHECK(fs::file_size(dir / "spool" / "1.spool") == 4 + 5);
+}
+
+// 13. A spool left by an earlier run is renamed to .old, not deleted, and a new run starts clean.
+// Expected: 1.spool.old holds the old data, the new 1.pdf only the new data.
+void test_old_spool_kept() {
+    fs::path dir = fresh_dir("old_spool");
+    {
+        Reassembler crashed;                   // goes away without write_files, like a killed run
+        crashed.dir = dir.string();
+        add(crashed, 1, 0, "OLD");
+    }
+    Reassembler r;
+    r.dir = dir.string();
+    add(r, 1, 0, "new");
+
+    CHECK(fs::file_size(dir / "spool" / "1.spool.old") == 4 + 3);
+    CHECK(write_files(r));
+    CHECK(read_file(dir / "1.pdf") == "new");
+    CHECK(fs::exists(dir / "spool" / "1.spool.old"));    // untouched: only --recover uses it
+}
+
+// 14. Recovery after a crash: out-of-order records, a duplicate, and a record torn by the crash.
+// Expected: 1.partial.pdf holds the complete records in seq order; the torn one is ignored; spool deleted.
+void test_recover_after_crash() {
+    fs::path dir = fresh_dir("recover");
+    {
+        Reassembler crashed;
+        crashed.dir = dir.string();
+        add(crashed, 1, 2, "CCC");
+        add(crashed, 1, 0, "AAA");
+        add(crashed, 1, 1, "BBB");
+    }
+    // Simulate dying mid-write: a header that promises 100 bytes, followed by only 5
+    std::ofstream(dir / "spool" / "1.spool", std::ios::binary | std::ios::app) << std::string("\x00\x03\x00\x64", 4) << "torn!";
+
+    Reassembler r;
+    r.dir = dir.string();
+    CHECK(recover_files(r));
+    CHECK(r.files[1].index.size() == 3);
+    CHECK(read_file(dir / "1.partial.pdf") == "AAABBBCCC");
+    CHECK(!fs::exists(dir / "1.pdf"));
+    CHECK(!fs::exists(dir / "spool" / "1.spool"));
+}
+
+// 15. Recovery falls back to <id>.spool.old when there is no newer <id>.spool.
+void test_recover_uses_old_spool() {
+    fs::path dir = fresh_dir("recover_old");
+    {
+        Reassembler crashed;
+        crashed.dir = dir.string();
+        add(crashed, 2, 0, "older");
+    }
+    fs::rename(dir / "spool" / "2.spool", dir / "spool" / "2.spool.old");
+
+    Reassembler r;
+    r.dir = dir.string();
+    CHECK(recover_files(r));
+    CHECK(read_file(dir / "2.partial.pdf") == "older");
+}
+
+// 16. A normal run with a missing seq is not given the real name.
+// Expected: 1.partial.pdf, no 1.pdf.
+void test_gap_gives_partial_pdf() {
+    fs::path dir = fresh_dir("gap");
+    Reassembler r;
+    r.dir = dir.string();
+
+    add(r, 1, 0, "A");
+    add(r, 1, 2, "C");                         // seq 1 never arrived
+    CHECK(write_files(r));
+    CHECK(read_file(dir / "1.partial.pdf") == "AC");
+    CHECK(!fs::exists(dir / "1.pdf"));
+}
+
 int main() {
     // hide the "Wrote N CTFS chunks" logs
     if (!std::freopen("/dev/null", "w", stdout)) std::fprintf(stderr, "note: logs not hidden\n");
@@ -239,6 +322,11 @@ int main() {
     RUN(test_replaces_existing_file);
     RUN(test_failed_write_keeps_old_file);
     RUN(test_zero_length_payload);
+    RUN(test_records_flushed_immediately);
+    RUN(test_old_spool_kept);
+    RUN(test_recover_after_crash);
+    RUN(test_recover_uses_old_spool);
+    RUN(test_gap_gives_partial_pdf);
 
     fs::remove_all(TEST_ROOT);
 

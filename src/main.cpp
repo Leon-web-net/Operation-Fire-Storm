@@ -5,18 +5,24 @@
 
 #include <sys/socket.h> //accept, recv
 #include <unistd.h> //close
-
 #include <cerrno>
 #include <cstdio>
+#include <string>
 
-int main(){
+int main(int argc, char** argv){
+    // ./firestorm --recover: rebuild PDFs from the spools a crashed or failed run left behind
+    if(argc == 2 && std::string(argv[1]) == "--recover"){
+        Reassembler r;
+        return recover_files(r) ? 0 : 1;
+    }
+    if(argc != 1){ std::fprintf(stderr, "usage: %s [--recover]\n", argv[0]); return 1; }
+
     int listen_fd = make_listener(LISTEN_PORT);
     if (listen_fd < 0) return 1;
     std::printf("Listening on port %d\n", LISTEN_PORT);
 
     int in_fd = accept(listen_fd, nullptr, nullptr);
     if(in_fd < 0) { perror("accept"); close(listen_fd); return 1; }
-
     int out_fd = -1; // connect lazily
 
     // Forward normal traffic to the downstream port.
@@ -63,12 +69,11 @@ int main(){
             break;
         }
     }
-
-    if(ok) ok = finish(parser, forward) && spool_ok;
+    
     // Only write after a clean run: a failed run must not replace a good PDF with a partial one.
-    // One output file per file ID: 1.pdf, 2.pdf, ... (on failure the destructor deletes the spools)
+    if(ok) ok = finish(parser, forward) && spool_ok;
     if(ok) ok = write_files(reassembler);
-    else   std::fprintf(stderr, "Run failed: no PDF written\n");
+    else   std::fprintf(stderr, "Run failed: no PDF written. Spools kept: run with --recover to rebuild them.\n");
 
     close(in_fd);
     if(out_fd != -1) close(out_fd);

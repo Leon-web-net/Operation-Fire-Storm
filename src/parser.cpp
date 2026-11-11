@@ -20,10 +20,11 @@ namespace{
 
             case State::Searching: {
                 // Look for the next "CTFS" marker
-                const char* it = std::search(data + pos, data + n, MARKER, MARKER + MARKER_LEN);
+                const char* marker_it = std::search(data + pos, data + n, 
+                                        MARKER, MARKER + MARKER_LEN);
 
-                if(it != data + n){
-                    size_t marker_pos = static_cast<size_t>(it - data);
+                if(marker_it != data + n){
+                    size_t marker_pos = static_cast<size_t>(marker_it - data);
                     if(!forward(data + pos, marker_pos - pos)){ ok = false; return pos; }
 
                     pos = marker_pos;
@@ -76,7 +77,7 @@ bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward, const
     bool ok = true;
 
     if(p.pending.empty()){
-        // Fast path (the usual case): work straight from the caller's buffer, no copy.
+        // Fa st path (the usual case): work straight from the caller's buffer, no copy.
         // Only the unfinished tail (0-3 bytes, or a packet split across reads) is kept.
         size_t used = process(p, data, n, forward, on_packet, ok);
         p.pending.assign(data + used, data + n);
