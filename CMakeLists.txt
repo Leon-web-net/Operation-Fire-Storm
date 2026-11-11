@@ -11,7 +11,6 @@ endif()
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
-# Shared logic (no main, no sockets): used by the app and the tests
 add_library(firestorm_core STATIC
   src/ctfs.cpp
   src/parser.cpp
@@ -19,7 +18,6 @@ add_library(firestorm_core STATIC
 )
 target_include_directories(firestorm_core PUBLIC src)
 
-# The relay program
 add_executable(firestorm
   src/main.cpp
   src/net.cpp
@@ -42,3 +40,10 @@ add_executable(test_golden unit_tests/test_golden.cpp)
 target_link_libraries(test_golden PRIVATE firestorm_core)
 target_compile_definitions(test_golden PRIVATE DATA_DIR="${CMAKE_SOURCE_DIR}/unit_tests/data")
 add_test(NAME golden COMMAND test_golden)
+
+# Recovery test: rebuilds the crash spool unit_tests/data/1.spool into <project>/1.partial.pdf
+add_executable(test_recover unit_tests/test_recover.cpp)
+target_link_libraries(test_recover PRIVATE firestorm_core)
+target_compile_definitions(test_recover PRIVATE
+  DATA_DIR="${CMAKE_SOURCE_DIR}/unit_tests/data" PROJECT_DIR="${CMAKE_SOURCE_DIR}")
+add_test(NAME recover COMMAND test_recover)
