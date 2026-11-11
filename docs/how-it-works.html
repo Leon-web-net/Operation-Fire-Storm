@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firestorm System Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column; a wide interactive diagram + step panel up top, reference sections below. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --ink:#16202a; --muted:#56636f; --line:#c6cfd7;
+  --accent:#1d5cc0; --accent-soft:#dde8fa; --ctfs:#a86200; --ctfs-soft:#fbecd6;
+  --ok:#2c7a4b; --bad:#b0281f; --disk:#6b4fa3; --disk-soft:#ece6f7;
+  --display:"Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --body:"IBM Plex Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1419; --surface:#161f27; --ink:#e3e9ee; --muted:#98a6b2; --line:#2c3944;
+  --accent:#74a6ff; --accent-soft:#1c2c46; --ctfs:#f2a845; --ctfs-soft:#3a2a12;
+  --ok:#5fc48a; --bad:#ff7a6e; --disk:#b79cf0; --disk-soft:#2a2240; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1419; --surface:#161f27; --ink:#e3e9ee; --muted:#98a6b2; --line:#2c3944;
+  --accent:#74a6ff; --accent-soft:#1c2c46; --ctfs:#f2a845; --ctfs-soft:#3a2a12;
+  --ok:#5fc48a; --bad:#ff7a6e; --disk:#b79cf0; --disk-soft:#2a2240; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 var(--body);margin:0}
+.wrap{max-width:1040px;margin:0 auto;padding-block:40px 72px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex;flex-direction:column;gap:48px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(2rem,4.5vw,2.8rem);font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.5rem;font-weight:700}
+h3{font-size:1.05rem;font-weight:700}
+p{margin:0;max-width:68ch}
+code,.mono{font-family:var(--mono);font-size:.86em}
+.eyebrow{font:600 .75rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:flex;flex-direction:column;gap:12px}
+header p{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:18px}
+
+/* ---------- diagram + stepper ---------- */
+.explorer{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.diagram{overflow-x:auto;border-bottom:1px solid var(--line)}
+.diagram svg{display:block;min-width:760px;width:100%;height:auto}
+.node rect{fill:var(--surface);stroke:var(--line);stroke-width:1.5;transition:fill .2s,stroke .2s}
+.node.ext rect{fill:var(--bg);stroke-dasharray:5 4}
+.node.disk rect{fill:var(--disk-soft);stroke:var(--disk)}
+.node text{fill:var(--ink);font:600 13px var(--body)}
+.node text.sub{fill:var(--muted);font:400 11px var(--mono)}
+.node.on rect{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2.5}
+.node.disk.on rect{fill:var(--disk-soft);stroke:var(--accent);stroke-width:2.5}
+.edge{stroke:var(--line);stroke-width:1.8;fill:none;transition:stroke .2s}
+.edge.on{stroke:var(--accent);stroke-width:2.6}
+.edge.ctfs.on{stroke:var(--ctfs)}
+.elabel{fill:var(--muted);font:400 11px var(--mono)}
+.box-label{fill:var(--muted);font:600 11px var(--mono);letter-spacing:.08em}
+.container{fill:none;stroke:var(--line);stroke-width:1.5;stroke-dasharray:2 4}
+marker path{fill:var(--line)}
+#arrow-on path{fill:var(--accent)} #arrow-ctfs path{fill:var(--ctfs)}
+
+.stepper{display:grid;grid-template-columns:220px 1fr;min-height:300px}
+.steplist{list-style:none;margin:0;padding:8px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.steplist button{all:unset;cursor:pointer;display:flex;gap:10px;align-items:baseline;padding:7px 10px;border-radius:6px;font-size:.9rem;color:var(--muted);width:100%;box-sizing:border-box}
+.steplist button .n{font:600 .75rem var(--mono);min-width:1.6em}
+.steplist button:hover{background:var(--bg);color:var(--ink)}
+.steplist button[aria-current="step"]{background:var(--accent-soft);color:var(--ink);font-weight:600}
+.steplist button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.detail{padding:22px 26px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.detail .where{font:600 .78rem var(--mono);color:var(--accent)}
+.detail pre{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:12px 14px;overflow-x:auto;font:400 .82rem/1.55 var(--mono)}
+.detail .why{border-left:3px solid var(--ctfs);padding-left:12px;color:var(--muted)}
+.detail .why b{color:var(--ink)}
+.nav{display:flex;gap:8px;margin-top:auto;padding-top:6px}
+.nav button{font:600 .85rem var(--body);padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.nav button.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.nav button:disabled{opacity:.4;cursor:default}
+.nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:700px){
+  .stepper{grid-template-columns:1fr}
+  .steplist{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
+  .steplist button{width:auto;white-space:nowrap}
+  .detail{padding:18px 16px}
+}
+
+/* ---------- reference blocks ---------- */
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.bytes{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:3px;font:400 .7rem var(--mono)}
+.bytes div{display:flex;flex-direction:column;align-items:center;padding:6px 0;border-radius:4px;text-align:center}
+.bytes .i{color:var(--muted);font-size:.62rem}
+.f-mark{background:var(--ctfs-soft)} .f-seq{background:var(--accent-soft)} .f-len{background:var(--accent-soft);outline:1px solid var(--accent)}
+.f-id{background:var(--disk-soft)} .f-sum{background:var(--bg);outline:1px dashed var(--line)} .f-pad{background:var(--bg)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.82rem;color:var(--muted)}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px;background:var(--sw)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 .72rem var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+td code{white-space:nowrap}
+.pill{display:inline-block;font:600 .72rem var(--mono);padding:2px 8px;border-radius:99px;white-space:nowrap}
+.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.pill.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.pill.warn{color:var(--ctfs);background:var(--ctfs-soft)}
+.spool{display:flex;flex-wrap:wrap;gap:4px;font:400 .78rem var(--mono)}
+.spool div{padding:6px 8px;border-radius:4px}
+.spool .rh{background:var(--bg);color:var(--muted)} .spool .pl{background:var(--disk-soft)}
+.index{font:400 .82rem/1.7 var(--mono);background:var(--bg);border-radius:6px;padding:10px 14px}
+.note{font-size:.88rem;color:var(--muted)}
+.states{display:flex;flex-direction:column;gap:10px}
+.state{border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.state h3{font-size:.95rem;display:flex;gap:8px;align-items:center}
+.state p{font-size:.9rem;color:var(--muted)}
+.tag{font:600 .7rem var(--mono);color:var(--accent)}
+footer{color:var(--muted);font-size:.85rem}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head><body>
+
+<div class="wrap">
+<header>
+  <h1>How firestorm works</h1>
+  <p>firestorm sits between a sender on port 5733 and a receiver on port 5744. It forwards normal traffic unchanged, takes the CTFS packets out of the stream, and rebuilds the hidden file as <code>1.pdf</code>. If the run is killed, what it received can still be rebuilt. Step through a run below; each step lights up the part of the program doing the work.</p>
+</header>
+
+<section aria-labelledby="h-run">
+  <h2 id="h-run">One run, step by step</h2>
+  <div class="explorer">
+    <div class="diagram">
+      <svg viewBox="0 0 1000 400" role="img" aria-label="Data flow: sender to recv loop, feed, Searching and InMessage states; normal bytes go through forward to port 5744; CTFS packets go through on_packet to add_packet, the spool, write_files and 1.pdf.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+          <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+          <marker id="arrow-ctfs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+        </defs>
+        <rect class="container" x="160" y="14" width="660" height="372" rx="12"/>
+        <text class="box-label" x="176" y="34">FIRESTORM PROCESS</text>
+
+        <!-- edges -->
+        <path class="edge" data-e="e-in" d="M140 77H178" marker-end="url(#arrow)"/>
+        <path class="edge" data-e="e-feed" d="M320 77H338" marker-end="url(#arrow)"/>
+        <path class="edge" data-e="e-proc" d="M480 77H498" marker-end="url(#arrow)"/>
+        <path class="edge ctfs" data-e="e-tomsg" d="M640 68H658" marker-end="url(#arrow)"/>
+        <path class="edge" data-e="e-tosearch" d="M660 88H642" marker-end="url(#arrow)"/>
+        <path class="edge" data-e="e-fwd" d="M570 104V178" marker-end="url(#arrow)"/>
+        <text class="elabel" x="578" y="146">normal bytes</text>
+        <path class="edge" data-e="e-out" d="M640 207H848" marker-end="url(#arrow)"/>
+        <path class="edge ctfs" data-e="e-pkt" d="M730 104V178" marker-end="url(#arrow)"/>
+        <text class="elabel" x="738" y="146">packet</text>
+        <path class="edge ctfs" data-e="e-add" d="M730 234V298" marker-end="url(#arrow)"/>
+        <path class="edge ctfs" data-e="e-spool" d="M660 327H642" marker-end="url(#arrow)"/>
+        <path class="edge" data-e="e-write" d="M500 327H482" marker-end="url(#arrow)"/>
+        <path class="edge" data-e="e-pdf" d="M340 327H322" marker-end="url(#arrow)"/>
+        <path class="edge" data-e="e-eof" d="M250 104V178" marker-end="url(#arrow)"/>
+        <text class="elabel" x="258" y="146">recv() = 0</text>
+        <path class="edge" data-e="e-flush" d="M320 207H498" marker-end="url(#arrow)"/>
+        <text class="elabel" x="340" y="199">leftover bytes</text>
+        <path class="edge" data-e="e-final" d="M250 234V250H410V298" marker-end="url(#arrow)"/>
+
+        <!-- nodes -->
+        <g class="node ext" data-n="sender"><rect x="15" y="50" width="125" height="54" rx="8"/><text x="28" y="73">test.py sender</text><text class="sub" x="28" y="91">→ :5733</text></g>
+        <g class="node" data-n="recv"><rect x="180" y="50" width="140" height="54" rx="8"/><text x="193" y="73">recv loop</text><text class="sub" x="193" y="91">main.cpp</text></g>
+        <g class="node" data-n="feed"><rect x="340" y="50" width="140" height="54" rx="8"/><text x="353" y="73">feed()</text><text class="sub" x="353" y="91">fast / slow path</text></g>
+        <g class="node" data-n="search"><rect x="500" y="50" width="140" height="54" rx="8"/><text x="513" y="73">Searching</text><text class="sub" x="513" y="91">find "CTFS"</text></g>
+        <g class="node" data-n="msg"><rect x="660" y="50" width="140" height="54" rx="8"/><text x="673" y="73">InMessage</text><text class="sub" x="673" y="91">wait 16 + len</text></g>
+        <g class="node" data-n="finish"><rect x="180" y="180" width="140" height="54" rx="8"/><text x="193" y="203">finish()</text><text class="sub" x="193" y="221">end of stream</text></g>
+        <g class="node" data-n="forward"><rect x="500" y="180" width="140" height="54" rx="8"/><text x="513" y="203">forward</text><text class="sub" x="513" y="221">lambda in main</text></g>
+        <g class="node ext" data-n="receiver"><rect x="850" y="180" width="135" height="54" rx="8"/><text x="863" y="203">:5744 receiver</text><text class="sub" x="863" y="221">test.py</text></g>
+        <g class="node" data-n="onpacket"><rect x="660" y="180" width="140" height="54" rx="8"/><text x="673" y="203">on_packet</text><text class="sub" x="673" y="221">lambda in main</text></g>
+        <g class="node" data-n="add"><rect x="660" y="300" width="140" height="54" rx="8"/><text x="673" y="323">add_packet()</text><text class="sub" x="673" y="341">reassembler.cpp</text></g>
+        <g class="node disk" data-n="spool"><rect x="500" y="300" width="140" height="54" rx="8"/><text x="513" y="323">spool/1.spool</text><text class="sub" x="513" y="341">+ index in RAM</text></g>
+        <g class="node" data-n="write"><rect x="340" y="300" width="140" height="54" rx="8"/><text x="353" y="323">write_files()</text><text class="sub" x="353" y="341">seq order</text></g>
+        <g class="node disk" data-n="pdf"><rect x="180" y="300" width="140" height="54" rx="8"/><text x="193" y="323">1.pdf</text><text class="sub" x="193" y="341">or 1.partial.pdf</text></g>
+      </svg>
+    </div>
+    <div class="stepper">
+      <ol class="steplist" id="steplist"></ol>
+      <div class="detail" aria-live="polite">
+        <span class="where" id="d-where"></span>
+        <h3 id="d-title"></h3>
+        <p id="d-what"></p>
+        <pre id="d-code"></pre>
+        <p class="why" id="d-why"></p>
+        <div class="nav">
+          <button id="prev" type="button">Previous</button>
+          <button id="next" type="button" class="primary">Next step</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-header">
+  <h2 id="h-header">The CTFS packet</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h3>16-byte header, then <code>len</code> payload bytes</h3>
+      <div class="scroll"><div class="bytes" style="min-width:420px">
+        <div class="f-mark"><span class="i">0</span>C</div><div class="f-mark"><span class="i">1</span>T</div><div class="f-mark"><span class="i">2</span>F</div><div class="f-mark"><span class="i">3</span>S</div>
+        <div class="f-seq"><span class="i">4</span>seq</div><div class="f-seq"><span class="i">5</span>seq</div>
+        <div class="f-len"><span class="i">6</span>len</div><div class="f-len"><span class="i">7</span>len</div>
+        <div class="f-id"><span class="i">8</span>id</div>
+        <div class="f-sum"><span class="i">9</span>sum</div><div class="f-sum"><span class="i">10</span>sum</div><div class="f-sum"><span class="i">11</span>sum</div><div class="f-sum"><span class="i">12</span>sum</div>
+        <div class="f-pad"><span class="i">13</span>00</div><div class="f-pad"><span class="i">14</span>00</div><div class="f-pad"><span class="i">15</span>00</div>
+      </div></div>
+      <div class="legend">
+        <span style="--sw:var(--ctfs-soft)">marker</span><span style="--sw:var(--accent-soft)">seq, len (big-endian)</span><span style="--sw:var(--disk-soft)">file ID</span><span style="--sw:var(--line)">checksum, padding (parsed, not checked yet)</span>
+      </div>
+      <p class="note"><code>parse_header()</code> in <code>ctfs.cpp</code> turns these bytes into a <code>CtfsHeader</code>. Packet size = 16 + <code>len</code>. In the test: 20 packets, seqs 0–19, 7 before 6 and 9 before 8, seq 19 has <code>len</code> 0.</p>
+    </div>
+    <div class="panel">
+      <h3>The parser's two states</h3>
+      <div class="states">
+        <div class="state"><h3>Searching <span class="tag">framing</span></h3><p>Look for <code>CTFS</code>. Forward everything before it. If the read ends in <code>C</code>, <code>CT</code> or <code>CTF</code>, hold just those bytes back: they might be the start of a marker split across two reads.</p></div>
+        <div class="state"><h3>InMessage <span class="tag">framing</span></h3><p>Marker found. Wait for 16 header bytes, read <code>len</code>, wait for 16 + <code>len</code>. Hand the packet to <code>on_packet</code>, then go back to Searching. Nothing is stored here.</p></div>
+      </div>
+      <p class="note">Bytes that can't be finished yet stay in <code>pending</code>. Usually that's 0–3 bytes, or a packet split across reads.</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-spool">
+  <h2 id="h-spool">The spool and the index</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Packets arrive as seq 2, 0, 1</h3>
+      <p class="note"><code>spool/1.spool</code> on disk, in arrival order. Each record is <code>[seq][len]</code> + payload, flushed to the kernel as soon as it arrives:</p>
+      <div class="scroll"><div class="spool" style="min-width:360px">
+        <div class="rh">2 · 3</div><div class="pl">CCC</div><div class="rh">0 · 3</div><div class="pl">AAA</div><div class="rh">1 · 3</div><div class="pl">BBB</div>
+      </div></div>
+      <p class="note">The index in RAM: a <code>std::map</code>, always ordered by seq.</p>
+      <div class="index">0 → offset 11, len 3<br>1 → offset 18, len 3<br>2 → offset 4, len 3</div>
+      <p class="note"><code>write_files</code> walks the index 0, 1, 2 and copies one payload at a time to <code>1.pdf.tmp</code>, giving <code>AAABBBCCC</code>. Then it renames the file to <code>1.pdf</code>, and only then deletes the spool. Nothing is ever sorted.</p>
+      <p class="note"><b>Crash recovery:</b> each record carries its own seq and length, so if firestorm is killed, <code>./firestorm --recover</code> reads the spool from the start and rebuilds the index. A torn last record is ignored. The result is named <code>1.partial.pdf</code>.</p>
+    </div>
+    <div class="panel">
+      <h3>Where the memory goes</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>What</th><th>Where</th><th>Size</th></tr></thead>
+        <tbody>
+          <tr><td><code>char buf[65536]</code></td><td>stack</td><td>64 KB, fixed</td></tr>
+          <tr><td><code>pending</code></td><td>heap</td><td>Usually 0–3 bytes; at most one packet plus one read</td></tr>
+          <tr><td>index (<code>std::map</code>)</td><td>heap</td><td>One small entry per packet</td></tr>
+          <tr><td>payloads</td><td>disk (spool)</td><td>The whole file, never all in RAM</td></tr>
+          <tr><td>copy buffer in <code>write_files</code></td><td>heap</td><td>One payload, at most 64 KB</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Peak RAM is the index plus one payload, whatever the file size or the packet order. The cost is disk: each byte is written twice (spool, then output) and read back once.</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-errors">
+  <h2 id="h-errors">When things go wrong</h2>
+  <div class="panel scroll">
+    <table>
+      <thead><tr><th>Situation</th><th>What firestorm does</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Same seq arrives twice</td><td><code>add_packet</code> keeps the first copy and returns <code>Duplicate</code>; <code>main</code> logs a warning</td><td><span class="pill warn">warn, continue</span></td></tr>
+        <tr><td>Stream ends partway through a packet</td><td><code>finish()</code> forwards those bytes as normal traffic: they were never a complete packet</td><td><span class="pill warn">warn, continue</span></td></tr>
+        <tr><td>A gap before the last seq received</td><td><code>write_files</code> warns how many are missing and writes <code>&lt;id&gt;.partial.pdf</code>. Packets missing <em>after</em> the last one received can't be detected</td><td><span class="pill warn">.partial.pdf</span></td></tr>
+        <tr><td>A spool write fails</td><td>That spool is marked <code>failed</code>. Traffic keeps flowing to 5744, but the run fails, so <b>no file</b> gets a PDF. All spools are kept</td><td><span class="pill bad">exit 1, spools kept</span></td></tr>
+        <tr><td><code>recv</code>, connect or send fails</td><td>Loop stops; <code>finish</code> and <code>write_files</code> are skipped; spools are kept</td><td><span class="pill bad">exit 1, spools kept</span></td></tr>
+        <tr><td>firestorm is killed</td><td>Every record already flushed is on disk. <code>--recover</code> rebuilds it as <code>&lt;id&gt;.partial.pdf</code></td><td><span class="pill warn">recoverable</span></td></tr>
+        <tr><td>Writing the <code>.tmp</code> file fails</td><td><code>.tmp</code> deleted; an older PDF is left untouched; the spool is kept</td><td><span class="pill bad">exit 1</span></td></tr>
+        <tr><td>Clean run, no gaps</td><td>Each file written via <code>.tmp</code> + <code>rename</code> as <code>&lt;id&gt;.pdf</code>, then its spool is deleted</td><td><span class="pill ok">exit 0</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div>
+
+<script>
+const STEPS = [
+  { t:"Listen and accept", where:"main.cpp · net.cpp make_listener()",
+    nodes:["sender","recv"], edges:["e-in"],
+    what:"firestorm binds 127.0.0.1:5733 and blocks in accept() until test.py connects. It doesn't connect to 5744 yet, because the receiver only starts listening after the sender connects.",
+    code:"int listen_fd = make_listener(LISTEN_PORT);\nint in_fd = accept(listen_fd, nullptr, nullptr);\nint out_fd = -1;   // connect lazily",
+    why:"<b>Why lazy:</b> connecting to 5744 straight away would race the test harness and fail." },
+  { t:"Read whatever has arrived", where:"main.cpp recv loop",
+    nodes:["recv"], edges:[],
+    what:"recv() copies up to 64 KB from the kernel into buf. Its boundaries are arbitrary: half a header, or three packets at once. 0 means the sender closed the connection.",
+    code:"ssize_t n = recv(in_fd, buf, sizeof(buf), 0);\nif (n == 0) break;                  // end of stream\nif (!feed(parser, buf, n, forward, on_packet)) { ok = false; break; }",
+    why:"<b>No overflow possible:</b> recv never writes more than sizeof(buf). Anything extra waits in the kernel, and if firestorm falls behind, TCP pauses the sender (backpressure)." },
+  { t:"feed(): fast or slow path", where:"parser.cpp feed()",
+    nodes:["recv","feed"], edges:["e-feed"],
+    what:"If nothing is left over from the last read, the parser works straight from buf (no copy) and saves only the unfinished tail. Otherwise it joins the leftover bytes with the new data in pending and works from there.",
+    code:"if (p.pending.empty()) {                 // fast path, the usual case\n    size_t used = process(p, data, n, ...);\n    p.pending.assign(data + used, data + n);\n} else {                                 // slow path, at packet boundaries\n    p.pending.insert(p.pending.end(), data, data + n);\n    size_t used = process(p, p.pending.data(), p.pending.size(), ...);\n    p.pending.erase(p.pending.begin(), p.pending.begin() + used);\n}",
+    why:"<b>Why:</b> the first version copied every byte into pending. Now copies only happen where a packet straddles two reads." },
+  { t:"Searching for CTFS", where:"parser.cpp process(), case Searching",
+    nodes:["feed","search"], edges:["e-proc"],
+    what:"std::search looks for the 4-byte marker. Bytes before it are normal traffic. With no marker, everything is forwarded except a trailing C, CT or CTF.",
+    code:"const char* marker_it = std::search(data + pos, data + n, MARKER, MARKER + 4);\nif (marker_it != data + n) { forward(data + pos, marker_pos - pos);\n                      p.state = State::InMessage; }\n// else: hold back up to 3 bytes that match the start of \"CTFS\"",
+    why:"<b>Why only a prefix:</b> holding back the last 3 bytes of every read would delay all traffic and could deadlock request/response protocols." },
+  { t:"Forward normal traffic", where:"main.cpp forward lambda · net.cpp send_all()",
+    nodes:["search","forward","receiver"], edges:["e-fwd","e-out"],
+    what:"The parser calls forward() and doesn't know where the bytes go. In main, the first call connects to 5744; send_all loops until every byte is sent.",
+    code:"auto forward = [&out_fd](const char* data, size_t len) {\n    if (out_fd == -1) {\n        out_fd = connect_to(FORWARD_PORT);\n        if (out_fd < 0) return false;   // connect failed: the run fails\n    }\n    return send_all(out_fd, data, len);   // MSG_NOSIGNAL\n};",
+    why:"<b>Why a callback:</b> the parser has no socket code, so tests pass a lambda that appends to a string instead." },
+  { t:"InMessage: wait for the whole packet", where:"parser.cpp process(), case InMessage · ctfs.cpp",
+    nodes:["search","msg"], edges:["e-tomsg","e-tosearch"],
+    what:"With fewer than 16 bytes, wait. Then parse the header to learn len, and wait for 16 + len. Once the packet is complete, hand it on and go back to Searching.",
+    code:"if (left < HEADER_LEN) return pos;          // wait\nCtfsHeader h = parse_header(msg);\nif (left < HEADER_LEN + h.len) return pos;  // wait\non_packet(h, msg + HEADER_LEN);\np.state = State::Searching;",
+    why:"<b>This is framing:</b> working out where each packet starts and ends in a byte stream. The parser doesn't store anything." },
+  { t:"on_packet: main connects the parts", where:"main.cpp on_packet lambda",
+    nodes:["msg","onpacket"], edges:["e-pkt"],
+    what:"main is the only code that knows both the parser and the reassembler. The lambda passes each packet to add_packet and handles the result: log it, warn on a duplicate, or remember a write error.",
+    code:"AddResult res = add_packet(reassembler, header, payload);\nif (res == AddResult::Duplicate)  { /* warn, ignore */ }\nif (res == AddResult::WriteError) { spool_ok = false; }",
+    why:"<b>Why here:</b> putting this in the parser or the reassembler would couple them again. The payload pointer is only valid during the call, so the reassembler writes the payload to the spool before the call returns." },
+  { t:"Append to the spool", where:"reassembler.cpp add_packet()",
+    nodes:["onpacket","add","spool"], edges:["e-add","e-spool"],
+    what:"Duplicates are rejected first. On a file ID's first packet, spool/<id>.spool is opened in append mode; a spool left by an earlier run is renamed to .spool.old, not deleted. Each packet is written to the end as [seq][len][payload] and flushed, then the index records where the payload is.",
+    code:"f.fp = std::fopen(\"spool/1.spool\", \"a+b\");   // every write lands at the end\nfwrite(rec, 1, 4, f.fp);                      // seq, len\nfwrite(payload, 1, header.len, f.fp);\nfflush(f.fp);                                 // hand it to the kernel now\nf.index[header.seq] = {f.size + 4, header.len};",
+    why:"<b>Why flush every record:</b> fwrite keeps data in a 4 KB buffer inside the process, and a kill loses it. Once flushed, the kernel keeps it even if firestorm dies. RAM holds only the index." },
+  { t:"End of stream: finish()", where:"parser.cpp finish()",
+    nodes:["recv","finish","forward","receiver"], edges:["e-eof","e-flush","e-out"],
+    what:"recv returned 0. Whatever is still in pending is forwarded: a held-back C/CT/CTF, or a packet the stream cut off, which also prints a warning.",
+    code:"if (p.state == State::InMessage) fprintf(stderr, \"warning: stream ended inside a CTFS packet...\");\nbool ok = p.pending.empty() || forward(p.pending.data(), p.pending.size());\np.pending.clear();",
+    why:"<b>Why forward a broken packet:</b> it was never complete, so most likely it was normal data that happened to contain CTFS. Dropping it would lose real traffic." },
+  { t:"Write 1.pdf safely", where:"main.cpp · reassembler.cpp write_files()",
+    nodes:["spool","write","pdf"], edges:["e-write","e-pdf","e-final"],
+    what:"This only runs after a clean run. It walks the index in seq order and copies one payload at a time to a .tmp file, then renames it. With no gaps the name is 1.pdf; a gap before the last seq gives 1.partial.pdf. Only after the rename is the spool deleted.",
+    code:"if (ok) ok = finish(parser, forward) && spool_ok;\nif (ok) ok = write_files(reassembler);\nelse    fprintf(stderr, \"Run failed: no PDF written. Spools kept: run with --recover\");",
+    why:"<b>Why .tmp + rename:</b> rename replaces the file in one step, so a failed write can never leave a half-written PDF over a good one." },
+  { t:"Clean up and exit", where:"main.cpp · Reassembler destructor",
+    nodes:["recv"], edges:[],
+    what:"main closes the sockets and returns 0 or 1. The Reassembler's destructor only closes spool files: it never deletes them. So after a failed run, everything received is still in spool/.",
+    code:"close(in_fd);\nif (out_fd != -1) close(out_fd);   // only if 5744 was ever connected\nclose(listen_fd);\nreturn ok ? 0 : 1;\n// ~Reassembler(): fclose each open spool, delete nothing",
+    why:"<b>Why a Reassembler can't be copied:</b> it owns open files. Two copies would close the same files twice." },
+  { t:"After a crash: --recover", where:"main.cpp · reassembler.cpp recover_files()",
+    nodes:["spool","write","pdf"], edges:["e-write","e-pdf"],
+    what:"A separate mode, with no network. It finds every <id>.spool (or .spool.old) in spool/, reads its records from the start to rebuild the index, ignores a torn last record, and writes <id>.partial.pdf the same way as a normal run.",
+    code:"./firestorm --recover\n\nwhile (fread(rec, 1, 4, fp) == 4) {          // [seq][len]\n    if (size + 4 + len > file_size) break;   // torn record: ignore\n    index.emplace(seq, Slice{size + 4, len}); // first copy wins\n    size += 4 + len;  fseek(fp, len, SEEK_CUR);\n}",
+    why:"<b>Why it's possible:</b> each record stores its own seq and length, so the spool describes itself. The output is .partial because recovery can't prove nothing is missing at the end." },
+];
+
+const list = document.getElementById("steplist");
+const $ = id => document.getElementById(id);
+let cur = 0;
+
+STEPS.forEach((s, i) => {
+  const li = document.createElement("li");
+  const b = document.createElement("button");
+  b.type = "button";
+  b.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span></span>`;
+  b.lastChild.textContent = s.t;
+  b.addEventListener("click", () => show(i));
+  li.appendChild(b); list.appendChild(li);
+});
+
+function show(i) {
+  cur = i; const s = STEPS[i];
+  $("d-where").textContent = s.where;
+  $("d-title").textContent = `${i + 1}. ${s.t}`;
+  $("d-what").textContent = s.what;
+  $("d-code").textContent = s.code;
+  $("d-why").innerHTML = s.why;
+  document.querySelectorAll(".node").forEach(n => n.classList.toggle("on", s.nodes.includes(n.dataset.n)));
+  document.querySelectorAll(".edge").forEach(e => {
+    const on = s.edges.includes(e.dataset.e);
+    e.classList.toggle("on", on);
+    e.setAttribute("marker-end", on ? (e.classList.contains("ctfs") ? "url(#arrow-ctfs)" : "url(#arrow-on)") : "url(#arrow)");
+  });
+  list.querySelectorAll("button").forEach((b, j) => { if (j === i) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); });
+  $("prev").disabled = i === 0;
+  $("next").disabled = i === STEPS.length - 1;
+  try { localStorage.setItem("fs-step", String(i)); } catch (e) {}
+}
+$("prev").addEventListener("click", () => cur > 0 && show(cur - 1));
+$("next").addEventListener("click", () => cur < STEPS.length - 1 && show(cur + 1));
+let start = 0;
+try { const v = parseInt(localStorage.getItem("fs-step"), 10); if (v >= 0 && v < STEPS.length) start = v; } catch (e) {}
+show(start);
+</script>
+</body></html>

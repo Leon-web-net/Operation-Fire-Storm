@@ -26,30 +26,13 @@ cmake --build build/release
 
 ## Test
 
-**Unit tests:**
-
-```bash
-ctest --test-dir build/release --output-on-failure
-```
-
-Expected: `100% tests passed, 0 tests failed out of 4`.
-
-| Suite | What it checks |
-|---|---|
-| `parser` | Framing on its own, with no sockets: a split at every byte offset, one byte per read, partial markers and headers, several packets in one read, packets cut off by the end of the stream |
-| `reassembler` | Duplicates, several file IDs, seq order, write errors, atomic replace, crash recovery |
-| `golden` | The real Stage 1 capture fed through the parser and reassembler at 11 different read sizes; the PDF must match byte for byte |
-| `recover` | Rebuilds a real crash spool (`unit_tests/data/42.spool`) into `42.partial.pdf` |
-
-`test_recover` writes `42.partial.pdf` into the project folder, and it refuses to run if `spool/` already holds spools.
-
 **End-to-end with `e2e_check.sh` (Stage 1 only):**
 
 ```bash
 ./scripts/e2e_check.sh
 ```
 
-This runs firestorm against CoreTech's `test.py` in a temporary folder. It checks that the test prints `OK`, that firestorm exits cleanly, and that `1.pdf` has the expected SHA-256. Nothing is left in the repo.
+This runs firestorm against CoreTech's `test.py` in a temporary folder. It checks that the test prints `OK`, that firestorm exits cleanly, and that `1.pdf` is identical to the original via SHA-256 fingerprint. Nothing is left in the repo.
 
 ## Run by hand
 
@@ -85,6 +68,24 @@ If firestorm is killed or a run fails, rebuild what was received:
 ./build/release/firestorm --recover
 ```
 
+## Unit tests
+
+```bash
+ctest --test-dir build/release --output-on-failure
+```
+
+Expected: `100% tests passed, 0 tests failed out of 4`.
+
+| Suite | What it checks |
+|---|---|
+| `parser` | Framing on its own, with no sockets: a split at every byte offset, one byte per read, partial markers and headers, several packets in one read, packets cut off by the end of the stream |
+| `reassembler` | Duplicates, several file IDs, seq order, write errors, atomic replace, crash recovery |
+| `golden` | The real Stage 1 capture fed through the parser and reassembler at 11 different read sizes; the PDF must match byte for byte |
+| `recover` | Rebuilds a real crash spool (`unit_tests/data/42.spool`) into `42.partial.pdf` |
+
+`test_recover` writes `<id>.partial.pdf` for each fixture into the project folder, and it refuses to run if `spool/` already holds spools.
+
+
 ## How it works
 
 ```
@@ -98,7 +99,10 @@ recv() ──▶ Parser (framing) ──forward(bytes)────────�
 - **`main.cpp`** owns the sockets and connects the parts with two lambdas: `forward` (connects to 5744 lazily, then sends) and `on_packet` (passes the packet to the reassembler, then logs it if it was stored; duplicates and write errors get a warning instead).
 - **`ctfs.cpp`** decodes the 16-byte header. **`net.cpp`** wraps the socket calls.
 
-How the header layout was worked out from the capture is in [`docs/protocol-analysis.md`](docs/protocol-analysis.md).
+
+See [`docs/how-it-works.html`](docs/how-it-works.html) for a visual walkthrough: step through one run and see which part of the program does the work.
+
+How the header layout was worked out from the capture is in [`docs/protocol_analysis.md`](docs/protocol_analysis.md).
 
 ## Design decisions
 
@@ -140,5 +144,5 @@ src/            firestorm source (main, net, parser, ctfs, reassembler, config)
 unit_tests/     parser, reassembler, golden and recover tests; data/ holds the fixtures
 scripts/        e2e_check.sh
 tests/coretech/ CoreTech's test harness (stage_1, stage_2), unchanged
-docs/           protocol analysis
+docs/           protocol analysis, visual guide (how-it-works.html), challenge brief
 ```
