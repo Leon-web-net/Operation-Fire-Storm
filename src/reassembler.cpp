@@ -1,6 +1,8 @@
 #include "reassembler.hpp"
 
+#include <cerrno>
 #include <charconv>
+#include <cstring>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -32,7 +34,18 @@ AddResult add_packet(Reassembler& r, const CtfsHeader& header, const char* paylo
         fs::create_directory(spool_dir(r), ec);  // not create_directories: a missing r.dir stays an error
         f.path = spool_dir(r) + "/" + std::to_string(header.file_id) + ".spool";
         if(fs::exists(f.path)){                  // left by a crashed or failed run: keep it for --recover
-            std::rename(f.path.c_str(), (f.path + ".old").c_str());
+            const std::string old_path = f.path + ".old";
+            if(fs::exists(old_path)){            // never overwrite it: rename would replace it silently
+                std::fprintf(stderr, "error: %s already exists; run --recover first, or move %s and %s\n",
+                    old_path.c_str(), f.path.c_str(), old_path.c_str());
+                f.failed = true;
+                return AddResult::WriteError;
+            }
+            if(std::rename(f.path.c_str(), old_path.c_str()) != 0){
+                std::fprintf(stderr, "error: cannot rename %s to %s: %s\n", f.path.c_str(), old_path.c_str(), std::strerror(errno));
+                f.failed = true;
+                return AddResult::WriteError;
+            }
             std::fprintf(stderr, "warning: kept spool from an earlier run as %s.old\n", f.path.c_str());
         }
         f.fp = std::fopen(f.path.c_str(), "a+b");  // append mode: every write lands at the end
@@ -110,6 +123,10 @@ bool write_files(Reassembler& r, bool recovered){
         std::fclose(f.fp);              // the PDF is safe: now the spool can go
         f.fp = nullptr;
         std::remove(f.path.c_str());
+    }
+    if(all_ok){
+        std::error_code ec;
+        fs::remove(spool_dir(r), ec);   // refuses a non-empty folder; any error is ignored
     }
     return all_ok;
 }
