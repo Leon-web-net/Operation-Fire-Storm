@@ -13,6 +13,7 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 
 add_library(firestorm_core STATIC
   src/ctfs.cpp
+  src/frame.cpp
   src/parser.cpp
   src/reassembler.cpp
 )
@@ -47,3 +48,7 @@ target_link_libraries(test_recover PRIVATE firestorm_core)
 target_compile_definitions(test_recover PRIVATE
   DATA_DIR="${CMAKE_SOURCE_DIR}/unit_tests/data" PROJECT_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME recover COMMAND test_recover)
+
+add_executable(test_router unit_tests/test_router.cpp)
+target_link_libraries(test_router PRIVATE firestorm_core)
+add_test(NAME router COMMAND test_router)
