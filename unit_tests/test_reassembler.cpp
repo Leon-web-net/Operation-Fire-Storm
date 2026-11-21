@@ -307,6 +307,72 @@ void test_gap_gives_partial_pdf() {
     CHECK(!fs::exists(dir / "1.pdf"));
 }
 
+// 17. An existing <id>.spool.old is never overwritten.
+// Expected: WriteError (now and for later packets), both files unchanged.
+void test_existing_old_not_overwritten() {
+    fs::path dir = fresh_dir("old_exists");
+    fs::create_directory(dir / "spool");
+    write_file(dir / "spool" / "1.spool", "NEWER");
+    write_file(dir / "spool" / "1.spool.old", "OLDER");
+    Reassembler r;
+    r.dir = dir.string();
+
+    CHECK(add(r, 1, 0, "x") == AddResult::WriteError);
+    CHECK(add(r, 1, 1, "y") == AddResult::WriteError);
+    CHECK(read_file(dir / "spool" / "1.spool") == "NEWER");
+    CHECK(read_file(dir / "spool" / "1.spool.old") == "OLDER");
+}
+
+// 18. If renaming the old spool fails, the add fails.
+// Expected: WriteError. Uses a read-only spool folder, so it is skipped when running as root.
+void test_rename_failure() {
+    fs::path dir = fresh_dir("rename_fail");
+    fs::create_directory(dir / "spool");
+    write_file(dir / "spool" / "1.spool", "OLD");
+    fs::permissions(dir / "spool", fs::perms::owner_read | fs::perms::owner_exec);
+
+    // Probe: if a file can still be created, permissions aren't enforced (root)
+    std::FILE* probe = std::fopen((dir / "spool" / "probe").string().c_str(), "wb");
+    if (probe) {
+        std::fclose(probe);
+        fs::permissions(dir / "spool", fs::perms::owner_all);
+        std::fprintf(stderr, "skipped: folder permissions not enforced (running as root?)\n");
+        return;
+    }
+
+    Reassembler r;
+    r.dir = dir.string();
+    CHECK(add(r, 1, 0, "new") == AddResult::WriteError);
+    fs::permissions(dir / "spool", fs::perms::owner_all);   // so cleanup works
+    CHECK(read_file(dir / "spool" / "1.spool") == "OLD");
+}
+
+// 19. After a clean write_files the empty spool folder is removed.
+void test_empty_spool_dir_removed() {
+    fs::path dir = fresh_dir("rm_spool_dir");
+    Reassembler r;
+    r.dir = dir.string();
+
+    add(r, 1, 0, "data");
+    CHECK(write_files(r));
+    CHECK(fs::exists(dir / "1.pdf"));
+    CHECK(!fs::exists(dir / "spool"));
+}
+
+// 20. A spool folder that still holds other files is never removed.
+void test_nonempty_spool_dir_kept() {
+    fs::path dir = fresh_dir("keep_spool_dir");
+    fs::create_directory(dir / "spool");
+    write_file(dir / "spool" / "9.spool.old", "OTHER");
+    Reassembler r;
+    r.dir = dir.string();
+
+    add(r, 1, 0, "data");
+    CHECK(write_files(r));
+    CHECK(fs::exists(dir / "1.pdf"));
+    CHECK(read_file(dir / "spool" / "9.spool.old") == "OTHER");
+}
+
 int main() {
     // hide the "Wrote N CTFS chunks" logs
     if (!std::freopen("/dev/null", "w", stdout)) std::fprintf(stderr, "note: logs not hidden\n");
@@ -327,6 +393,10 @@ int main() {
     RUN(test_recover_after_crash);
     RUN(test_recover_uses_old_spool);
     RUN(test_gap_gives_partial_pdf);
+    RUN(test_existing_old_not_overwritten);
+    RUN(test_rename_failure);
+    RUN(test_empty_spool_dir_removed);
+    RUN(test_nonempty_spool_dir_kept);
 
     fs::remove_all(TEST_ROOT);
 
