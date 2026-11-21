@@ -56,6 +56,13 @@ namespace{
 
                 const char* msg = data + pos;
                 CtfsHeader header = parse_header(msg);
+                if(!header.padding_ok){
+                    // Not a real packet, just "CTFS" in normal traffic: forward the 'C', search again from the next byte
+                    if(!forward(msg, 1)){ ok = false; return pos; }
+                    pos += 1;
+                    p.state = State::Searching;
+                    break;
+                }
                 size_t total = HEADER_LEN + static_cast<size_t>(header.len);
 
                 if(left < total) return pos;

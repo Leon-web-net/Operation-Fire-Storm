@@ -215,6 +215,34 @@ void test_parse_header() {
     CHECK(!parse_header(hdr.data()).padding_ok);
 }
 
+// 11. "CTFS" in normal traffic, followed by non-zero padding, is not a packet.
+// Expected: all of it is forwarded unchanged, nothing emitted, and a real packet after it is still found.
+void test_bad_padding_is_traffic() {
+    std::string fake = packet(0, "DATA");
+    fake[14] = 'x';   // padding byte 2 non-zero
+    run("a" + fake + "b" + packet(1, "REAL"));
+
+    CHECK(forwarded == "a" + fake + "b");
+    CHECK(packets.size() == 1 && packets[0].payload == "REAL");
+}
+
+// 12. A real packet that starts inside the bytes of a fake header is still found.
+// Expected: the fake "CTFS" prefix is forwarded, the real packet is emitted.
+void test_packet_inside_fake_header() {
+    std::string real = packet(2, "OK");
+    real[10] = '\x7f';                   // non-zero checksum byte
+    std::string input = "CTFS" + real;   // the fake header's padding is real's checksum bytes 9-11: non-zero
+    for (size_t split = 0; split <= input.size(); ++split) {
+        reset();
+        Parser p;
+        feed(p, input.data(), split, collect, collect_packet);
+        feed(p, input.data() + split, input.size() - split, collect, collect_packet);
+        finish(p, collect);
+        CHECK(forwarded == "CTFS");
+        CHECK(packets.size() == 1 && packets[0].payload == "OK");
+    }
+}
+
 int main() {
     RUN(test_plain_traffic);
     RUN(test_one_packet);
@@ -227,6 +255,8 @@ int main() {
     RUN(test_duplicate_seq);
     RUN(test_truncated_header_at_eof);
     RUN(test_parse_header);
+    RUN(test_bad_padding_is_traffic);
+    RUN(test_packet_inside_fake_header);
 
     std::fprintf(stderr, failures == 0 ? "\nAll tests passed\n" : "\n%d check(s) failed\n", failures);
     return failures == 0 ? 0 : 1;   // ctest reads this: 0 = pass
