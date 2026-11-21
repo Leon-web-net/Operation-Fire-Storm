@@ -106,3 +106,7 @@ SIGINT handler (finish cleanly, keep spools), socket timeouts.
 | 5 | One output port fails | Fail the run (consistent with Stage 1). Revisit if needed |
 | 6 | Bad padding / checksum | Padding → not CTFS, normal traffic. Checksum → see open issue |
 | 7 | `route()` | Pure, no I/O |
+
+## Status (2026-11-21)
+
+Done: A (PR #1), B1 + B2 (PR #2), C1–C5 (PR #3, includes #1 and #2). Open: the checksum tail issue, D.
