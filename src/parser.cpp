@@ -1,4 +1,5 @@
 #include "parser.hpp"
+#include "frame.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -78,27 +79,76 @@ namespace{
         }
         return pos;
     }
+
+    // Stage 2: split the stream by length. Same contract as process().
+    size_t process_frames(const char* data, size_t n, const FrameFn& on_frame, const PacketFn& on_packet, bool& ok){
+        size_t pos = 0;
+        while(pos < n){
+            const char* unit = data + pos;
+            const size_t left = n - pos;
+            if(left < MARKER_LEN) return pos;
+
+            if(std::memcmp(unit, MARKER, MARKER_LEN) == 0){
+                if(left < HEADER_LEN) return pos;
+                CtfsHeader header = parse_header(unit);
+                if(header.padding_ok){
+                    size_t total = HEADER_LEN + static_cast<size_t>(header.len);
+                    if(left < total) return pos;
+                    on_packet(header, unit + HEADER_LEN);
+                    pos += total;
+                    continue;
+                }
+                // non-zero padding: not a packet, so it must be a frame
+            }
+
+            size_t len = frame_len(unit, left);
+            if(len == 0) return pos;
+            if(len == FRAME_INVALID){
+                std::fprintf(stderr, "error: input is not a CTFS packet or an Ethernet/IPv4 frame, stopping\n");
+                ok = false;
+                return pos;
+            }
+            if(left < len) return pos;
+            if(!on_frame(unit, len)){ ok = false; return pos; }
+            pos += len;
+        }
+        return pos;
+    }
+
+    // Shared by both modes: process from the caller's buffer when nothing is pending (no copy),
+    // otherwise join the leftover bytes with the new data first. Keeps whatever wasn't consumed.
+    template <typename Process>
+    void run(Parser& p, const char* data, size_t n, Process process){
+        if(p.pending.empty()){
+            size_t used = process(data, n);
+            p.pending.assign(data + used, data + n);
+        } else {
+            p.pending.reserve(p.pending.size() + n); // also silences a GCC 13 false-positive -Wstringop-overflow on insert
+            p.pending.insert(p.pending.end(), data, data + n);
+            size_t used = process(p.pending.data(), p.pending.size());
+            p.pending.erase(p.pending.begin(), p.pending.begin() + static_cast<std::ptrdiff_t>(used));
+        }
+    }
 }
 
 bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward, const PacketFn& on_packet){
     bool ok = true;
-
-    if(p.pending.empty()){
-        // Fa st path (the usual case): work straight from the caller's buffer, no copy.
-        // Only the unfinished tail (0-3 bytes, or a packet split across reads) is kept.
-        size_t used = process(p, data, n, forward, on_packet, ok);
-        p.pending.assign(data + used, data + n);
-    } else {
-        // Leftover bytes from the last read: join them with the new data, then process.
-        p.pending.reserve(p.pending.size() + n); // also silences a GCC 13 false-positive -Wstringop-overflow on insert
-        p.pending.insert(p.pending.end(), data, data + n);
-        size_t used = process(p, p.pending.data(), p.pending.size(), forward, on_packet, ok);
-        p.pending.erase(p.pending.begin(), p.pending.begin() + static_cast<std::ptrdiff_t>(used));
-    }
-
+    run(p, data, n, [&](const char* d, size_t len){ return process(p, d, len, forward, on_packet, ok); });
     return ok;
 }
 
+bool feed_frames(Parser& p, const char* data, size_t n, const FrameFn& on_frame, const PacketFn& on_packet){
+    bool ok = true;
+    run(p, data, n, [&](const char* d, size_t len){ return process_frames(d, len, on_frame, on_packet, ok); });
+    return ok;
+}
+
+void finish_frames(Parser& p){
+    if(!p.pending.empty()){
+        std::fprintf(stderr, "warning: stream ended inside a packet or frame, dropping %zu bytes\n", p.pending.size());
+    }
+    p.pending.clear();
+}
 
 bool finish(Parser& p, const ForwardFn& forward){
     // Stream ended mid packet, forward the partial packet as normal data

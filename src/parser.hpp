@@ -29,3 +29,16 @@ bool feed(Parser& p, const char* data, size_t n, const ForwardFn& forward, const
 
 // Call once when the input stream ends: forwards any held-back bytes.
 bool finish(Parser& p, const ForwardFn& forward);
+
+
+// Stage 2 framing: the stream is CTFS packets and Ethernet frames back to back, split by their lengths.
+// A unit starting with "CTFS" and zero padding is a packet; anything else must be a frame (see frame.hpp).
+
+// Called once per complete frame (only valid during the call). Return false on error.
+using FrameFn = std::function<bool(const char* frame, size_t len)>;
+
+// Process newly received bytes. Returns false if on_frame fails or a unit isn't a valid frame.
+bool feed_frames(Parser& p, const char* data, size_t n, const FrameFn& on_frame, const PacketFn& on_packet);
+
+// Call once when the input stream ends: an incomplete last unit is dropped with a warning.
+void finish_frames(Parser& p);

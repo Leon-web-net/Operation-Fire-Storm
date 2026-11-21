@@ -270,6 +270,73 @@ void test_checksum() {
     CHECK(ctfs_checksum(s, "abc") == 0xc3d832cau);
 }
 
+// STAGE 2 (length framing)
+
+// Ethernet II + IPv4 frame with the given payload size (protocol 6, MACs zero)
+std::string eth_frame(size_t payload_size, char fill) {
+    std::string f(12, '\0');
+    f += '\x08'; f += '\0';                         // ether type IPv4 (0x0800)
+    size_t total = 20 + payload_size;
+    std::string ip(20, '\0');
+    ip[0] = 0x45;                                       // version 4, IHL 5
+    ip[2] = char(total >> 8); ip[3] = char(total & 0xFF);
+    ip[9] = 6;                                          // TCP
+    return f + ip + std::string(payload_size, fill);
+}
+
+std::vector<std::string> frames;
+FrameFn collect_frame = [](const char* data, size_t len) {
+    frames.emplace_back(data, len);
+    return true;
+};
+
+// feed input split once at `split`, then end of stream; returns feed's results ANDed
+bool run_frames(const std::string& input, size_t split) {
+    reset();
+    frames.clear();
+    Parser p;
+    bool ok = feed_frames(p, input.data(), split, collect_frame, collect_packet);
+    ok = ok && feed_frames(p, input.data() + split, input.size() - split, collect_frame, collect_packet);
+    finish_frames(p);
+    return ok;
+}
+
+// 14. Frames and packets back to back, split at every byte.
+// Expected: each frame emitted whole and in order, the packet emitted, nothing else.
+void test_frames_split_everywhere() {
+    std::string f1 = eth_frame(10, 'a'), f2 = eth_frame(0, 'b'), f3 = eth_frame(300, 'c');
+    std::string input = f1 + packet(4, "PDFDATA") + f2 + packet(5, "") + f3;
+    for (size_t split = 0; split <= input.size(); ++split) {
+        CHECK(run_frames(input, split));
+        CHECK(frames.size() == 3 && frames[0] == f1 && frames[1] == f2 && frames[2] == f3);
+        CHECK(packets.size() == 2 && packets[0].payload == "PDFDATA" && packets[1].seq == 5);
+        CHECK(forwarded.empty());
+    }
+}
+
+// 15. Bytes that are neither a packet nor a frame stop the run.
+// Expected: feed_frames returns false; the frame before it was still emitted.
+void test_frames_invalid() {
+    std::string bad = eth_frame(4, 'x');
+    bad[12] = '\x86'; bad[13] = '\xDD';                  // IPv6 ether type
+    CHECK(!run_frames(eth_frame(4, 'a') + bad, 0));
+    CHECK(frames.size() == 1);
+
+    std::string fake = packet(0, "DATA");
+    fake[15] = 1;                                       // bad padding: read as a frame, which it isn't
+    CHECK(!run_frames(fake, 0));
+    CHECK(packets.empty() && frames.empty());
+}
+
+// 16. Stream ends inside a frame.
+// Expected: the complete frame is emitted, the partial one dropped, no error.
+void test_frames_truncated() {
+    std::string f = eth_frame(8, 'a');
+    std::string input = f + f.substr(0, 20);
+    CHECK(run_frames(input, input.size()));
+    CHECK(frames.size() == 1 && frames[0] == f);
+}
+
 int main() {
     RUN(test_plain_traffic);
     RUN(test_one_packet);
@@ -285,6 +352,9 @@ int main() {
     RUN(test_bad_padding_is_traffic);
     RUN(test_packet_inside_fake_header);
     RUN(test_checksum);
+    RUN(test_frames_split_everywhere);
+    RUN(test_frames_invalid);
+    RUN(test_frames_truncated);
 
     std::fprintf(stderr, failures == 0 ? "\nAll tests passed\n" : "\n%d check(s) failed\n", failures);
     return failures == 0 ? 0 : 1;   // ctest reads this: 0 = pass
