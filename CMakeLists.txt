@@ -52,3 +52,9 @@ add_test(NAME recover COMMAND test_recover)
 add_executable(test_router unit_tests/test_router.cpp)
 target_link_libraries(test_router PRIVATE firestorm_core)
 add_test(NAME router COMMAND test_router)
+
+# Golden test, stage 2: capture of packets + frames must rebuild 0..4.pdf and route frames as routes.txt says
+add_executable(test_golden_stage2 unit_tests/test_golden_stage2.cpp)
+target_link_libraries(test_golden_stage2 PRIVATE firestorm_core)
+target_compile_definitions(test_golden_stage2 PRIVATE DATA_DIR="${CMAKE_SOURCE_DIR}/unit_tests/data")
+add_test(NAME golden_stage2 COMMAND test_golden_stage2)
