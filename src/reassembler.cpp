@@ -1,4 +1,5 @@
 #include "reassembler.hpp"
+#include "bytes.hpp"
 
 #include <cerrno>
 #include <charconv>
@@ -51,10 +52,9 @@ AddResult add_packet(Reassembler& r, const CtfsHeader& header, const char* paylo
         f.fp = std::fopen(f.path.c_str(), "a+b");  // append mode: every write lands at the end
     }
 
-    const unsigned char rec[4] = {
-        static_cast<unsigned char>(header.seq >> 8), static_cast<unsigned char>(header.seq),
-        static_cast<unsigned char>(header.len >> 8), static_cast<unsigned char>(header.len),
-    };
+    unsigned char rec[4];   // record header: seq, len (big-endian)
+    write_u16(rec, header.seq);
+    write_u16(rec + 2, header.len);
     // fflush hands each record to the OS right away, so it survives the process being killed
     if(!f.fp || 
         std::fwrite(rec, 1, 4, f.fp) != 4 || std::fwrite(payload, 1, header.len, f.fp) != header.len     
@@ -143,8 +143,8 @@ static bool recover_spool(SpoolFile& f, const std::string& path){
 
     unsigned char rec[4];
     while(std::fread(rec, 1, 4, f.fp) == 4){
-        const uint16_t seq = static_cast<uint16_t>((rec[0] << 8) | rec[1]);
-        const uint16_t len = static_cast<uint16_t>((rec[2] << 8) | rec[3]);
+        const uint16_t seq = read_u16(rec);
+        const uint16_t len = read_u16(rec + 2);
         if(f.size + 4 + len > file_size) break;            // torn record, its payload never fully arrived
         f.index.emplace(seq, Slice{f.size + 4, len});      // keep the first copy
         f.size += 4 + len;
