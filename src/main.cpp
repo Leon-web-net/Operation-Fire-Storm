@@ -49,6 +49,11 @@ int main(int argc, char** argv){
             return;
         }
         std::printf("CTFS file=%d seq=%d len=%d\n", header.file_id, header.seq, header.len);
+        // Kept even on a mismatch: in the Stage 2 data the last packet of 4 of the 5 files fails
+        // (only those whose length isn't a multiple of 4), and dropping it would corrupt the PDF.
+        if(ctfs_checksum(header, payload) != header.checksum){
+            std::fprintf(stderr, "warning: checksum mismatch, file %d seq %d (kept)\n", header.file_id, header.seq);
+        }
     };
 
     char buf[65536];

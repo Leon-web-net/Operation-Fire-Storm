@@ -243,6 +243,33 @@ void test_packet_inside_fake_header() {
     }
 }
 
+std::string unhex(const std::string& h) {
+    std::string out;
+    for (size_t i = 0; i + 1 < h.size(); i += 2) out += char(std::stoi(h.substr(i, 2), nullptr, 16));
+    return out;
+}
+
+// 13. Checksum matches real Stage 2 packets.
+// Expected: computed == stored for a zero-length and a 64-byte packet; a flipped payload bit changes it;
+// a short last word is zero-padded (vector from a Python reference).
+void test_checksum() {
+    std::string empty = unhex("4354465302e2000001f761b64c000000");
+    CtfsHeader h = parse_header(empty.data());
+    CHECK(h.checksum == 0xf761b64cu);
+    CHECK(ctfs_checksum(h, empty.data() + 16) == h.checksum);
+
+    std::string full = unhex("435446530184004000f42f8881000000ce75507b235594412a55245889f2ca2abd93f0a613ce15f8"
+                             "585bd423845e3f63d3de65b51b6b6a36d62edbbb69c6e4ee3de3e37b6aeaadd67ab27ad5952b52a2");
+    h = parse_header(full.data());
+    CHECK(ctfs_checksum(h, full.data() + 16) == h.checksum);
+    full[20] ^= 1;
+    CHECK(ctfs_checksum(h, full.data() + 16) != h.checksum);
+
+    CtfsHeader s{};
+    s.seq = 7; s.len = 3; s.file_id = 9;
+    CHECK(ctfs_checksum(s, "abc") == 0xc3d832cau);
+}
+
 int main() {
     RUN(test_plain_traffic);
     RUN(test_one_packet);
@@ -257,6 +284,7 @@ int main() {
     RUN(test_parse_header);
     RUN(test_bad_padding_is_traffic);
     RUN(test_packet_inside_fake_header);
+    RUN(test_checksum);
 
     std::fprintf(stderr, failures == 0 ? "\nAll tests passed\n" : "\n%d check(s) failed\n", failures);
     return failures == 0 ? 0 : 1;   // ctest reads this: 0 = pass
